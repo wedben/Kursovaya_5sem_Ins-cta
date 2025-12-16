@@ -1,0 +1,639 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Определитель насекомых</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+</head>
+<body>
+    {% raw %}
+    <div id="app">
+    <div class="container">
+        <header>
+            <h1>🦋 Определитель насекомых 🦋</h1>
+            <p class="subtitle">Найдите насекомое по его характеристикам</p>
+        </header>
+
+        <main>
+                <div class="main-actions">
+                    <button @click="showAllInsects" class="view-all-btn">
+                        📚 Просмотреть все насекомые
+                    </button>
+                </div>
+
+                <div class="search-section">
+                    <h2>Кого вы видели?</h2>
+                    
+                    <div class="insect-type-selector">
+                        <button 
+                            v-for="type in insectTypes" 
+                            :key="type.value"
+                            class="insect-btn"
+                            :class="{ active: selectedType === type.value }"
+                            @click="selectType(type.value)"
+                        >
+                            <span v-if="type.image" class="icon icon-image">
+                                <img :src="type.image" :alt="type.label" class="insect-icon-img">
+                            </span>
+                            <span v-else class="icon">{{ type.icon }}</span>
+                            <span>{{ type.label }}</span>
+                        </button>
+                    </div>
+                    
+                    <div v-if="selectedType" class="params-form">
+                        <h3>🔍 Укажите параметры поиска:</h3>
+                        
+                        <!-- ФИЛЬТРЫ ДЛЯ СТРЕКОЗ -->
+                        <div v-if="selectedType === 'dragonfly'" class="filters-grid">
+                            <!-- Пол стрекозы -->
+                            <div class="filter-card">
+                                <div class="filter-header">
+                                    <span class="filter-icon">⚥</span>
+                                    <label>Пол</label>
+                                </div>
+                                <div class="gender-buttons">
+                                    <button 
+                                        class="gender-btn"
+                                        :class="{ active: searchParams.gender === 'самец' }"
+                                        @click="searchParams.gender = searchParams.gender === 'самец' ? '' : 'самец'"
+                                    >
+                                        ♂️ Самец
+                                    </button>
+                                    <button 
+                                        class="gender-btn"
+                                        :class="{ active: searchParams.gender === 'самка' }"
+                                        @click="searchParams.gender = searchParams.gender === 'самка' ? '' : 'самка'"
+                                    >
+                                        ♀️ Самка
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            <!-- Длина тела -->
+                            <div class="filter-card">
+                                <div class="filter-header">
+                                    <span class="filter-icon">📏</span>
+                                    <label>Длина тела (мм)</label>
+                                </div>
+                                <div class="size-inputs">
+                                    <input type="number" v-model.number="searchParams.bodyLengthMin" step="0.1" min="0" placeholder="от" class="size-input">
+                                    <span class="size-separator">—</span>
+                                    <input type="number" v-model.number="searchParams.bodyLengthMax" step="0.1" min="0" placeholder="до" class="size-input">
+                                </div>
+                            </div>
+                            
+                            <!-- Размах крыльев -->
+                            <div class="filter-card">
+                                <div class="filter-header">
+                                    <span class="filter-icon">🦋</span>
+                                    <label>Размах крыльев (мм)</label>
+                                </div>
+                                <div class="size-inputs">
+                                    <input type="number" v-model.number="searchParams.wingspanMin" step="0.1" min="0" placeholder="от" class="size-input">
+                                    <span class="size-separator">—</span>
+                                    <input type="number" v-model.number="searchParams.wingspanMax" step="0.1" min="0" placeholder="до" class="size-input">
+                                </div>
+                            </div>
+                            
+                            <!-- Основной цвет -->
+                            <div class="filter-card">
+                                <div class="filter-header">
+                                    <span class="filter-icon">🎨</span>
+                                    <label>Основной цвет</label>
+                                </div>
+                                <div class="color-quick-select">
+                                    <div class="quick-colors-label">Быстрый выбор:</div>
+                                    <div class="quick-color-tags">
+                                        <span 
+                                            v-for="color in filterOptions.basicColors" 
+                                            :key="color"
+                                            class="quick-color-tag"
+                                            :class="{ active: searchParams.color.toLowerCase().includes(color.toLowerCase()) }"
+                                            @click="selectQuickColor(color)"
+                                        >
+                                            {{ color }}
+                                        </span>
+                                    </div>
+                                </div>
+                                <select v-model="searchParams.color" class="select-input">
+                                    <option value="">Все цвета (точный поиск)...</option>
+                                    <option v-for="color in filterOptions.colors" :key="color" :value="color">
+                                        {{ color }}
+                                    </option>
+                                </select>
+                            </div>
+                            
+                            <!-- Цвет глаз -->
+                            <div class="filter-card">
+                                <div class="filter-header">
+                                    <span class="filter-icon">👁️</span>
+                                    <label>Цвет глаз</label>
+                                </div>
+                                <div class="color-quick-select">
+                                    <div class="quick-colors-label">Быстрый выбор:</div>
+                                    <div class="quick-color-tags">
+                                        <span 
+                                            v-for="color in filterOptions.basicEyeColors" 
+                                            :key="color"
+                                            class="quick-color-tag"
+                                            :class="{ active: searchParams.eyeColor.toLowerCase().includes(color.toLowerCase()) }"
+                                            @click="selectQuickEyeColor(color)"
+                                        >
+                                            {{ color }}
+                                        </span>
+                                    </div>
+                                </div>
+                                <select v-model="searchParams.eyeColor" class="select-input">
+                                    <option value="">Все цвета глаз (точный поиск)...</option>
+                                    <option v-for="color in filterOptions.eyeColors" :key="color" :value="color">
+                                        {{ color }}
+                                    </option>
+                                </select>
+                            </div>
+                            
+                            <!-- Место нахождения -->
+                            <div class="filter-card">
+                                <div class="filter-header">
+                                    <span class="filter-icon">📍</span>
+                                    <label>Место нахождения</label>
+                                </div>
+                                <div class="color-tags">
+                                    <span 
+                                        v-for="habitat in filterOptions.basicHabitats" 
+                                        :key="habitat"
+                                        class="color-tag"
+                                        :class="{ active: searchParams.habitat === habitat }"
+                                        @click="toggleBasicHabitat(habitat)"
+                                    >
+                                        {{ habitat }}
+                                    </span>
+                                </div>
+                                <select v-model="searchParams.habitat" class="select-input full-width-select">
+                                    <option value="">Все места</option>
+                                    <option v-for="habitat in filterOptions.allHabitats" :key="habitat" :value="habitat">
+                                        {{ habitat }}
+                                    </option>
+                                </select>
+                            </div>
+                            
+                            <!-- Среда (тип водоёма) -->
+                            <div class="filter-card">
+                                <div class="filter-header">
+                                    <span class="filter-icon">💧</span>
+                                    <label>Среда (тип водоёма)</label>
+                                </div>
+                                <select v-model="searchParams.environment" class="select-input">
+                                    <option value="">Выберите среду обитания...</option>
+                                    <option v-for="env in filterOptions.environments" :key="env" :value="env">
+                                        {{ env }}
+                                    </option>
+                                </select>
+                            </div>
+                            
+                            <!-- Период -->
+                            <div class="filter-card">
+                                <div class="filter-header">
+                                    <span class="filter-icon">📅</span>
+                                    <label>Период</label>
+                                </div>
+                                <select v-model="searchParams.season" class="select-input">
+                                    <option value="">Выберите период...</option>
+                                    <option v-for="season in filterOptions.seasons" :key="season" :value="season">
+                                        {{ season }}
+                                    </option>
+                                </select>
+                            </div>
+                        </div>
+                        
+                        <!-- ФИЛЬТРЫ ДЛЯ ЖУКОВ -->
+                        <div v-if="selectedType === 'beetle'" class="filters-grid">
+                            <!-- Длина тела -->
+                            <div class="filter-card">
+                                <div class="filter-header">
+                                    <span class="filter-icon">📏</span>
+                                    <label>Длина тела (мм)</label>
+                                </div>
+                                <div class="size-inputs">
+                                    <input type="number" v-model.number="searchParams.sizeMin" step="0.1" min="0" placeholder="от" class="size-input">
+                                    <span class="size-separator">—</span>
+                                    <input type="number" v-model.number="searchParams.sizeMax" step="0.1" min="0" placeholder="до" class="size-input">
+                                </div>
+                            </div>
+                            
+                            <!-- Основной цвет -->
+                            <div class="filter-card">
+                                <div class="filter-header">
+                                    <span class="filter-icon">🎨</span>
+                                    <label>Основной цвет</label>
+                                </div>
+                                <div class="color-quick-select">
+                                    <div class="quick-colors-label">Быстрый выбор:</div>
+                                    <div class="quick-color-tags">
+                                        <span 
+                                            v-for="color in filterOptions.basicColors" 
+                                            :key="color"
+                                            class="quick-color-tag"
+                                            :class="{ active: searchParams.color.toLowerCase().includes(color.toLowerCase()) }"
+                                            @click="selectQuickColor(color)"
+                                        >
+                                            {{ color }}
+                                        </span>
+                                    </div>
+                                </div>
+                                <select v-model="searchParams.color" class="select-input">
+                                    <option value="">Все цвета (точный поиск)...</option>
+                                    <option v-for="color in filterOptions.colors" :key="color" :value="color">
+                                        {{ color }}
+                                    </option>
+                                </select>
+                            </div>
+                            
+                            <!-- Тип поверхности / Блеск -->
+                            <div class="filter-card">
+                                <div class="filter-header">
+                                    <span class="filter-icon">✨</span>
+                                    <label>Тип поверхности / Блеск</label>
+                                </div>
+                                <div class="color-tags">
+                                    <span 
+                                        v-for="type in filterOptions.basicSurfaceTypes" 
+                                        :key="type"
+                                        class="color-tag"
+                                        :class="{ active: searchParams.surfaceType === type }"
+                                        @click="toggleBasicSurfaceType(type)"
+                                    >
+                                        {{ type }}
+                                    </span>
+                                </div>
+                                <select v-model="searchParams.surfaceType" class="select-input full-width-select">
+                                    <option value="">Все типы</option>
+                                    <option v-for="type in filterOptions.allSurfaceTypes" :key="type" :value="type">
+                                        {{ type }}
+                                    </option>
+                                </select>
+                            </div>
+                            
+                            <!-- Надкрылья -->
+                            <div class="filter-card">
+                                <div class="filter-header">
+                                    <span class="filter-icon">🛡️</span>
+                                    <label>Надкрылья</label>
+                                </div>
+                                <div class="color-tags">
+                                    <span 
+                                        v-for="elytra in filterOptions.basicElytra" 
+                                        :key="elytra"
+                                        class="color-tag"
+                                        :class="{ active: searchParams.elytra === elytra }"
+                                        @click="toggleBasicElytra(elytra)"
+                                    >
+                                        {{ elytra }}
+                                    </span>
+                                </div>
+                                <select v-model="searchParams.elytra" class="select-input full-width-select">
+                                    <option value="">Все типы</option>
+                                    <option v-for="elytra in filterOptions.allElytra" :key="elytra" :value="elytra">
+                                        {{ elytra }}
+                                    </option>
+                                </select>
+                            </div>
+                            
+                            <!-- Место нахождения -->
+                            <div class="filter-card">
+                                <div class="filter-header">
+                                    <span class="filter-icon">📍</span>
+                                    <label>Место нахождения</label>
+                                </div>
+                                <div class="color-tags">
+                                    <span 
+                                        v-for="habitat in filterOptions.basicHabitats" 
+                                        :key="habitat"
+                                        class="color-tag"
+                                        :class="{ active: searchParams.habitat === habitat }"
+                                        @click="toggleBasicHabitat(habitat)"
+                                    >
+                                        {{ habitat }}
+                                    </span>
+                                </div>
+                                <select v-model="searchParams.habitat" class="select-input full-width-select">
+                                    <option value="">Все места</option>
+                                    <option v-for="habitat in filterOptions.allHabitats" :key="habitat" :value="habitat">
+                                        {{ habitat }}
+                                    </option>
+                                </select>
+                            </div>
+                            
+                            <!-- Период активности -->
+                            <div class="filter-card">
+                                <div class="filter-header">
+                                    <span class="filter-icon">📅</span>
+                                    <label>Активность / Период</label>
+                                </div>
+                                <div class="color-tags">
+                                    <span 
+                                        v-for="season in filterOptions.basicSeasons" 
+                                        :key="season"
+                                        class="color-tag"
+                                        :class="{ active: searchParams.season === season }"
+                                        @click="toggleBasicSeason(season)"
+                                    >
+                                        {{ season }}
+                                    </span>
+                                </div>
+                                <select v-model="searchParams.season" class="select-input full-width-select">
+                                    <option value="">Все периоды</option>
+                                    <option v-for="season in filterOptions.allSeasons" :key="season" :value="season">
+                                        {{ season }}
+                                    </option>
+                                </select>
+                            </div>
+                        </div>
+                        
+                        <!-- ФИЛЬТРЫ ДЛЯ БАБОЧЕК -->
+                        <div v-if="selectedType === 'butterfly'" class="filters-grid">
+                            <!-- Размах крыльев -->
+                            <div class="filter-card">
+                                <div class="filter-header">
+                                    <span class="filter-icon">🦋</span>
+                                    <label>Размах крыльев (мм)</label>
+                                </div>
+                                <div class="size-inputs">
+                                    <input type="number" v-model.number="searchParams.sizeMin" step="0.1" min="0" placeholder="от" class="size-input">
+                                    <span class="size-separator">—</span>
+                                    <input type="number" v-model.number="searchParams.sizeMax" step="0.1" min="0" placeholder="до" class="size-input">
+                                </div>
+                            </div>
+                            
+                            <!-- Основной цвет крыльев -->
+                            <div class="filter-card">
+                                <div class="filter-header">
+                                    <span class="filter-icon">🎨</span>
+                                    <label>Основной цвет крыльев</label>
+                                </div>
+                                <div class="color-quick-select">
+                                    <div class="quick-colors-label">Быстрый выбор:</div>
+                                    <div class="quick-color-tags">
+                                        <span 
+                                            v-for="color in filterOptions.basicColors" 
+                                            :key="color"
+                                            class="quick-color-tag"
+                                            :class="{ active: searchParams.color.toLowerCase().includes(color.toLowerCase()) }"
+                                            @click="selectQuickColor(color)"
+                                        >
+                                            {{ color }}
+                                        </span>
+                                    </div>
+                                </div>
+                                <select v-model="searchParams.color" class="select-input">
+                                    <option value="">Все цвета (точный поиск)...</option>
+                                    <option v-for="color in filterOptions.colors" :key="color" :value="color">
+                                        {{ color }}
+                                    </option>
+                                </select>
+                            </div>
+                            
+                            <!-- Особенности рисунка крыльев -->
+                            <div class="filter-card">
+                                <div class="filter-header">
+                                    <span class="filter-icon">🎭</span>
+                                    <label>Особенности рисунка крыльев</label>
+                                </div>
+                                <div class="color-tags">
+                                    <span 
+                                        v-for="pattern in filterOptions.basicWingPatterns" 
+                                        :key="pattern"
+                                        class="color-tag"
+                                        :class="{ active: searchParams.wingPattern === pattern }"
+                                        @click="toggleBasicWingPattern(pattern)"
+                                    >
+                                        {{ pattern }}
+                                    </span>
+                                </div>
+                                <select v-model="searchParams.wingPattern" class="select-input full-width-select">
+                                    <option value="">Все варианты</option>
+                                    <option v-for="pattern in filterOptions.allWingPatterns" :key="pattern" :value="pattern">
+                                        {{ pattern }}
+                                    </option>
+                                </select>
+                            </div>
+                            
+                            <!-- Время суток (день/ночь) -->
+                            <div class="filter-card">
+                                <div class="filter-header">
+                                    <span class="filter-icon">🌓</span>
+                                    <label>Время суток</label>
+                                </div>
+                                <div class="time-buttons">
+                                    <button 
+                                        class="time-btn"
+                                        :class="{ active: searchParams.timeOfDay === 'день' }"
+                                        @click="searchParams.timeOfDay = searchParams.timeOfDay === 'день' ? '' : 'день'"
+                                    >
+                                        ☀️ Дневная
+                                    </button>
+                                    <button 
+                                        class="time-btn"
+                                        :class="{ active: searchParams.timeOfDay === 'ночь' }"
+                                        @click="searchParams.timeOfDay = searchParams.timeOfDay === 'ночь' ? '' : 'ночь'"
+                                    >
+                                        🌙 Ночная
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            <!-- Место нахождения -->
+                            <div class="filter-card">
+                                <div class="filter-header">
+                                    <span class="filter-icon">📍</span>
+                                    <label>Место нахождения</label>
+                                </div>
+                                <div class="color-tags">
+                                    <span 
+                                        v-for="habitat in filterOptions.basicHabitats" 
+                                        :key="habitat"
+                                        class="color-tag"
+                                        :class="{ active: searchParams.habitat === habitat }"
+                                        @click="toggleBasicHabitat(habitat)"
+                                    >
+                                        {{ habitat }}
+                                    </span>
+                                </div>
+                                <select v-model="searchParams.habitat" class="select-input full-width-select">
+                                    <option value="">Все места</option>
+                                    <option v-for="habitat in filterOptions.allHabitats" :key="habitat" :value="habitat">
+                                        {{ habitat }}
+                                    </option>
+                                </select>
+                            </div>
+                            
+                            <!-- Период лёта -->
+                            <div class="filter-card">
+                                <div class="filter-header">
+                                    <span class="filter-icon">📅</span>
+                                    <label>Период лёта</label>
+                                </div>
+                                <div class="color-tags">
+                                    <span 
+                                        v-for="season in filterOptions.basicSeasons" 
+                                        :key="season"
+                                        class="color-tag"
+                                        :class="{ active: searchParams.season === season }"
+                                        @click="toggleBasicSeason(season)"
+                                    >
+                                        {{ season }}
+                                    </span>
+                                </div>
+                                <select v-model="searchParams.season" class="select-input full-width-select">
+                                    <option value="">Все периоды</option>
+                                    <option v-for="season in filterOptions.allSeasons" :key="season" :value="season">
+                                        {{ season }}
+                                    </option>
+                                </select>
+                            </div>
+                        </div>
+                        
+                        <div class="action-buttons">
+                            <button @click="searchInsects" class="search-btn" :disabled="loading">
+                                <span v-if="!loading">🔍</span>
+                                <span v-else class="spinner-small"></span>
+                                {{ loading ? 'Поиск...' : 'Найти насекомых' }}
+                            </button>
+                            <button @click="clearForm" class="clear-btn">
+                                🗑️ Очистить фильтры
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div v-if="loading" class="loading">
+                    <div class="spinner"></div>
+                    <p>Поиск...</p>
+                    </div>
+                    
+                <div v-if="results.length > 0 || (searchPerformed && results.length === 0) || viewingAll" class="results-section">
+                    <div class="results-header">
+                        <h2 v-if="viewingAll">Все насекомые в базе данных</h2>
+                        <h2 v-else>Результаты поиска</h2>
+                        <button v-if="viewingAll" @click="closeViewAll" class="close-view-btn">
+                            ✕ Закрыть
+                        </button>
+                    </div>
+                    
+                    <!-- Поиск в режиме просмотра всех -->
+                    <div v-if="viewingAll" class="view-all-search">
+                        <div class="search-box">
+                            <span class="search-icon">🔍</span>
+                            <input 
+                                type="text" 
+                                v-model="viewAllSearchQuery"
+                                @input="filterViewAllResults"
+                                placeholder="Поиск по названию, цвету, месту обитания..."
+                                class="view-all-search-input"
+                            >
+                            <button v-if="viewAllSearchQuery" @click="clearViewAllSearch" class="clear-search-btn">
+                                ✕
+                            </button>
+                        </div>
+                        <div class="view-all-filters">
+                            <select v-model="viewAllTypeFilter" @change="filterViewAllResults" class="type-filter-select">
+                                <option value="">Все типы</option>
+                                <option value="dragonfly">Стрекозы</option>
+                                <option value="beetle">Жуки</option>
+                                <option value="butterfly">Бабочки</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div class="results-count">
+                        <span v-if="viewingAll">
+                            <span v-if="viewAllSearchQuery || viewAllTypeFilter">
+                                Найдено {{ filteredViewAllResults.length }} из {{ allInsectsCount }} насекомых
+                            </span>
+                            <span v-else>
+                                Всего {{ results.length }} насекомых
+                            </span>
+                        </span>
+                        <span v-else>
+                            Найдено {{ results.length }} {{ getTypeName(results.length) }}
+                        </span>
+                    </div>
+                    <div v-if="results.length === 0" class="no-results">
+                        К сожалению, по вашим параметрам ничего не найдено. Попробуйте изменить критерии поиска.
+                    </div>
+                    <div v-else class="results-container">
+                        <div v-for="insect in (viewingAll ? filteredViewAllResults : results)" :key="insect.id" class="insect-card">
+                            <div class="card-header" :class="{ 'male-card': extractGender(insect.description) === 'самец', 'female-card': extractGender(insect.description) === 'самка' }">
+                                <div class="card-icon">
+                                    <img v-if="isImageIcon(getTypeIcon(insect.insect_type || selectedType))" 
+                                         :src="getTypeIcon(insect.insect_type || selectedType)" 
+                                         :alt="getTypeLabel(insect.insect_type || selectedType)"
+                                         class="card-icon-img">
+                                    <span v-else>{{ getTypeIcon(insect.insect_type || selectedType) }}</span>
+                                </div>
+                                <div class="card-title">
+                                    <div class="title-row">
+                                        <h3>{{ insect.name_ru || 'Не указано' }}</h3>
+                                        <div v-if="extractGender(insect.description)" class="gender-badge" :class="extractGender(insect.description)">
+                                            <span class="gender-icon">{{ getGenderIcon(extractGender(insect.description)) }}</span>
+                                            <span class="gender-text">{{ extractGender(insect.description) }}</span>
+                                        </div>
+                                    </div>
+                                    <div v-if="insect.name_lat" class="name-lat">{{ insect.name_lat }}</div>
+                                    <div v-if="insect.insect_type && viewingAll" class="insect-type-badge">
+                                        {{ getTypeLabel(insect.insect_type) }}
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="card-body">
+                                <div v-if="insect.size_min || insect.size_max" class="detail-item">
+                                    <span class="detail-icon">📏</span>
+                                    <div class="detail-content">
+                                        <strong>Размер:</strong> 
+                                        <span class="detail-value">{{ formatSize(insect.size_min, insect.size_max) }}</span>
+                                    </div>
+                                </div>
+                                
+                                <div v-if="insect.color" class="detail-item">
+                                    <span class="detail-icon">🎨</span>
+                                    <div class="detail-content">
+                                        <strong>Цвет:</strong> 
+                                        <span class="detail-value color-badge">{{ insect.color }}</span>
+                                    </div>
+                    </div>
+                    
+                                <div v-if="insect.habitat" class="detail-item">
+                                    <span class="detail-icon">🌳</span>
+                                    <div class="detail-content">
+                                        <strong>Место обитания:</strong> 
+                                        <span class="detail-value">{{ insect.habitat }}</span>
+                </div>
+            </div>
+
+                                <div v-if="insect.season" class="detail-item">
+                                    <span class="detail-icon">📅</span>
+                                    <div class="detail-content">
+                                        <strong>Период:</strong> 
+                                        <span class="detail-value">{{ insect.season }}</span>
+                                    </div>
+            </div>
+
+                                <div v-if="cleanDescription(insect.description)" class="description">
+                                    <div class="description-header">ℹ️ Дополнительная информация:</div>
+                                    <div class="description-text">{{ cleanDescription(insect.description) }}</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+            </div>
+        </main>
+        </div>
+    </div>
+    {% endraw %}
+
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>
+
