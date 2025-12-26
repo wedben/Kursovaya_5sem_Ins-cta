@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Админ-панель - Определитель насекомых</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <style>
+        .admin-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .request-card {
+            background: white;
+            border: 2px solid #e0e0e0;
+            border-radius: 15px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+        }
+        .request-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #f0f0f0;
+        }
+        .status-badge {
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-size: 0.9em;
+            font-weight: 600;
+        }
+        .status-ожидает { background: #fff3cd; color: #856404; }
+        .status-в_работе { background: #d1ecf1; color: #0c5460; }
+        .status-отвечено { background: #d4edda; color: #155724; }
+        .status-отклонено { background: #f8d7da; color: #721c24; }
+        .answer-form {
+            margin-top: 20px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 10px;
+        }
+        .answer-form textarea {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            min-height: 100px;
+            font-family: inherit;
+            margin-bottom: 10px;
+        }
+        .answer-form input {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="admin-container">
+        <header style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; border-radius: 20px; margin-bottom: 30px;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                    <h1>🔧 Админ-панель</h1>
+                    <p>Управление запросами к эксперту</p>
+                </div>
+                <div>
+                    <a href="/" style="color: white; text-decoration: none; padding: 10px 20px; background: rgba(255,255,255,0.2); border-radius: 8px;">На главную</a>
+                </div>
+            </div>
+        </header>
+
+        {% raw %}
+        <div id="app">
+            <div v-if="loading" style="text-align: center; padding: 40px;">
+                <div class="spinner"></div>
+                <p>Загрузка запросов...</p>
+            </div>
+
+            <div v-else>
+                <!-- Отладочная информация -->
+                <div style="background: #e7f3ff; padding: 10px; border-radius: 8px; margin-bottom: 20px; font-size: 0.9em;">
+                    <strong>Отладка:</strong> Запросов в массиве: <span v-text="requests.length"></span> | 
+                    Отфильтровано: <span v-text="filteredRequests.length"></span> | 
+                    Статус фильтра: <span v-text="filterStatus || 'все'"></span>
+                </div>
+                
+                <div style="margin-bottom: 20px;">
+                    <h2>Запросы к эксперту (<span v-text="requests.length"></span>)</h2>
+                    <div style="display: flex; gap: 10px; margin-top: 10px;">
+                        <button @click="filterStatus = ''" :class="{'active': filterStatus === ''}" style="padding: 8px 15px; border: 2px solid #ddd; border-radius: 8px; background: white; cursor: pointer;">Все</button>
+                        <button @click="filterStatus = 'ожидает'" :class="{'active': filterStatus === 'ожидает'}" style="padding: 8px 15px; border: 2px solid #ddd; border-radius: 8px; background: white; cursor: pointer;">Ожидают</button>
+                        <button @click="filterStatus = 'отвечено'" :class="{'active': filterStatus === 'отвечено'}" style="padding: 8px 15px; border: 2px solid #ddd; border-radius: 8px; background: white; cursor: pointer;">Отвеченные</button>
+                    </div>
+                </div>
+
+                <div v-for="request in filteredRequests" :key="request.id_запроса" class="request-card">
+                    <div class="request-header">
+                        <div>
+                            <h3>Запрос #<span v-text="request.id_запроса"></span></h3>
+                            <p style="color: #666; margin: 5px 0;">
+                                От: <span v-text="request.имя_пользователя || 'Неизвестно'"></span>
+                                <span v-if="request.email_пользователя">(<span v-text="request.email_пользователя"></span>)</span>
+                            </p>
+                            <p style="color: #666; font-size: 0.9em;">
+                                Дата: <span v-text="formatDate(request.дата_создания)"></span>
+                            </p>
+                        </div>
+                        <span :class="['status-badge', 'status-' + request.статус]">
+                            <span v-text="request.статус"></span>
+                        </span>
+                    </div>
+
+                    <div style="margin-bottom: 15px;">
+                        <strong>Описание насекомого:</strong>
+                        <p style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin-top: 5px;">
+                            <span v-text="request.описание_насекомого"></span>
+                        </p>
+                    </div>
+
+                    <div v-if="request.место_наблюдения" style="margin-bottom: 10px;">
+                        <strong>Место:</strong> <span v-text="request.место_наблюдения"></span>
+                    </div>
+
+                    <div v-if="request.дата_наблюдения" style="margin-bottom: 10px;">
+                        <strong>Дата наблюдения:</strong> <span v-text="request.дата_наблюдения"></span>
+                    </div>
+
+                    <div v-if="request.дополнительные_данные" style="margin-bottom: 10px;">
+                        <strong>Дополнительно:</strong> <span v-text="request.дополнительные_данные"></span>
+                    </div>
+
+                    <div v-if="request.ответ_эксперта" style="margin-top: 20px; padding: 15px; background: #d4edda; border-radius: 8px;">
+                        <strong>Ответ эксперта:</strong>
+                        <p style="margin-top: 5px;"><span v-text="request.ответ_эксперта"></span></p>
+                        <!-- Изображение ответа (скрыто) -->
+                        <!-- <div v-if="request.изображение_ответа" style="margin-top: 10px;">
+                            <img :src="request.изображение_ответа" alt="Ответ эксперта" style="max-width: 300px; border-radius: 8px;">
+                        </div> -->
+                        <p v-if="request.дата_ответа" style="margin-top: 10px; font-size: 0.9em; color: #666;">
+                            Ответ дан: <span v-text="formatDate(request.дата_ответа)"></span>
+                        </p>
+                    </div>
+
+                    <div v-if="request.статус !== 'отвечено'" class="answer-form">
+                        <h4>Ответить на запрос:</h4>
+                        <textarea v-model="request.answerText" placeholder="Введите ответ эксперта..." style="width: 100%; padding: 12px; border: 2px solid #ddd; border-radius: 8px; min-height: 100px; font-family: inherit; margin-bottom: 10px;"></textarea>
+                        
+                        <!-- Выбор насекомого из базы данных -->
+                        <div style="margin-bottom: 15px;">
+                            <label style="display: block; margin-bottom: 8px; font-weight: 600;">Прикрепить насекомое из базы данных:</label>
+                            <div style="display: flex; gap: 10px; align-items: center;">
+                                <select v-model="request.selectedInsectId" @change="onInsectSelected(request)" 
+                                        style="flex: 1; padding: 10px; border: 2px solid #ddd; border-radius: 8px; font-size: 1em;">
+                                    <option value="">-- Выберите насекомое (опционально) --</option>
+                                    <optgroup v-for="type in ['dragonfly', 'beetle', 'butterfly']" :key="type" :label="getTypeLabel(type)">
+                                        <option v-for="insect in getInsectsByType(type)" 
+                                                :key="insect.id" 
+                                                :value="insect.id"
+                                                v-text="insect.name_ru + (insect.name_lat ? ' (' + insect.name_lat + ')' : '')">
+                                        </option>
+                                    </optgroup>
+                                </select>
+                                <button @click="showInsectSearch = !showInsectSearch" 
+                                        style="padding: 10px 15px; background: #6c757d; color: white; border: none; border-radius: 8px; cursor: pointer;">
+                                    🔍 Поиск
+                                </button>
+                            </div>
+                            
+                            <!-- Поиск насекомого -->
+                            <div v-if="showInsectSearch" style="margin-top: 10px; padding: 15px; background: #f8f9fa; border-radius: 8px;">
+                                <input v-model="insectSearchQuery" 
+                                       @input="filterInsects"
+                                       placeholder="Поиск по названию..."
+                                       style="width: 100%; padding: 10px; border: 2px solid #ddd; border-radius: 8px; margin-bottom: 10px;">
+                                <div style="max-height: 200px; overflow-y: auto;">
+                                    <div v-for="insect in filteredInsects" 
+                                         :key="insect.id"
+                                         @click="selectInsect(request, insect)"
+                                         :class="{'selected': request.selectedInsectId == insect.id}"
+                                         style="padding: 10px; margin-bottom: 5px; border: 2px solid #ddd; border-radius: 8px; cursor: pointer; background: white; display: flex; gap: 10px; align-items: center;"
+                                         :style="request.selectedInsectId == insect.id ? 'border-color: #667eea; background: #e7f3ff;' : ''">
+                                        <!-- Изображение насекомого в списке (скрыто) -->
+                                        <!-- <img v-if="insect.image_url" 
+                                             :src="insect.image_url" 
+                                             alt=""
+                                             style="width: 50px; height: 50px; object-fit: cover; border-radius: 4px;"> -->
+                                        <div style="flex: 1;">
+                                            <div style="font-weight: 600;"><span v-text="insect.name_ru"></span></div>
+                                            <div style="font-size: 0.9em; color: #666;" v-if="insect.name_lat"><span v-text="insect.name_lat"></span></div>
+                                            <div style="font-size: 0.85em; color: #999;"><span v-text="insect.type_label"></span></div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Показ выбранного насекомого -->
+                            <div v-if="request.selectedInsect" style="margin-top: 10px; padding: 15px; background: #e7f3ff; border-radius: 8px; border: 2px solid #667eea;">
+                                <div style="display: flex; gap: 15px; align-items: center;">
+                                    <!-- Изображение выбранного насекомого (скрыто) -->
+                                    <!-- <img v-if="request.selectedInsect.image_url" 
+                                         :src="request.selectedInsect.image_url" 
+                                         alt=""
+                                         style="width: 80px; height: 80px; object-fit: cover; border-radius: 8px;"> -->
+                                    <div style="flex: 1;">
+                                        <div style="font-weight: 600; font-size: 1.1em;"><span v-text="request.selectedInsect.name_ru"></span></div>
+                                        <div style="font-style: italic; color: #666;" v-if="request.selectedInsect.name_lat"><span v-text="request.selectedInsect.name_lat"></span></div>
+                                        <div style="font-size: 0.9em; color: #666; margin-top: 5px;">
+                                            <span v-text="request.selectedInsect.type_label"></span>
+                                            <span v-if="request.selectedInsect.size"> | <span v-text="request.selectedInsect.size"></span></span>
+                                        </div>
+                                    </div>
+                                    <button @click="clearSelectedInsect(request)" 
+                                            style="padding: 5px 10px; background: #dc3545; color: white; border: none; border-radius: 5px; cursor: pointer;">
+                                        ✕
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <input v-model="request.imageUrl" placeholder="URL изображения (опционально, если не выбрано насекомое)" type="text" style="width: 100%; padding: 12px; border: 2px solid #ddd; border-radius: 8px; margin-bottom: 10px;">
+                        <div style="display: flex; gap: 10px; align-items: center;">
+                            <button @click="submitAnswer(request)" 
+                                    :disabled="!request.answerText || !request.answerText.trim() || submitting"
+                                    :style="(!request.answerText || !request.answerText.trim() || submitting) ? 'opacity: 0.5; cursor: not-allowed;' : 'cursor: pointer;'"
+                                    style="padding: 12px 30px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 8px;">
+                                <span v-text="submitting ? 'Отправка...' : 'Отправить ответ'"></span>
+                            </button>
+                            <span v-if="!request.answerText || !request.answerText.trim()" style="color: #666; font-size: 0.9em;">
+                                Введите ответ для активации кнопки
+                            </span>
+                        </div>
+                        <div v-if="request.error" style="color: red; margin-top: 10px;"><span v-text="request.error"></span></div>
+                    </div>
+                </div>
+
+                <div v-if="error" style="background: #f8d7da; color: #721c24; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+                    <strong>Ошибка:</strong> <span v-text="error"></span>
+                </div>
+                
+                <div v-if="!loading && !error && filteredRequests.length === 0 && requests.length === 0" style="text-align: center; padding: 40px; color: #666;">
+                    <p style="font-size: 1.2em; margin-bottom: 10px;">Нет запросов к эксперту</p>
+                    <p style="font-size: 0.9em;">Пользователи могут создавать запросы через форму на главной странице</p>
+                </div>
+                <div v-else-if="!loading && !error && filteredRequests.length === 0" style="text-align: center; padding: 40px; color: #666;">
+                    <p>Нет запросов с выбранным статусом</p>
+                    <p style="font-size: 0.9em; margin-top: 10px;">Всего запросов: <span v-text="requests.length"></span></p>
+                </div>
+            </div>
+        </div>
+        {% endraw %}
+    </div>
+
+    <script>
+        const { createApp } = Vue;
+
+        createApp({
+            data() {
+                return {
+                    requests: [],
+                    loading: true,
+                    filterStatus: '',
+                    submitting: false,
+                    error: null,
+                    allInsects: [],
+                    insectSearchQuery: '',
+                    filteredInsects: [],
+                    showInsectSearch: false
+                };
+            },
+            computed: {
+                filteredRequests() {
+                    if (!this.filterStatus) {
+                        return this.requests;
+                    }
+                    return this.requests.filter(r => r.статус === this.filterStatus);
+                }
+            },
+            methods: {
+                async loadInsects() {
+                    try {
+                        const response = await fetch('/api/insects-for-selection');
+                        const data = await response.json();
+                        if (data.success) {
+                            this.allInsects = data.insects;
+                            this.filteredInsects = data.insects;
+                            console.log('Насекомые загружены:', this.allInsects.length);
+                        }
+                    } catch (error) {
+                        console.error('Ошибка загрузки насекомых:', error);
+                    }
+                },
+                
+                getTypeLabel(type) {
+                    const labels = {
+                        'dragonfly': 'Стрекозы',
+                        'beetle': 'Жуки',
+                        'butterfly': 'Бабочки'
+                    };
+                    return labels[type] || type;
+                },
+                
+                getInsectsByType(type) {
+                    return this.allInsects.filter(i => i.type === type);
+                },
+                
+                filterInsects() {
+                    if (!this.insectSearchQuery) {
+                        this.filteredInsects = this.allInsects;
+                        return;
+                    }
+                    const query = this.insectSearchQuery.toLowerCase();
+                    this.filteredInsects = this.allInsects.filter(insect => 
+                        insect.name_ru.toLowerCase().includes(query) ||
+                        (insect.name_lat && insect.name_lat.toLowerCase().includes(query))
+                    );
+                },
+                
+                selectInsect(request, insect) {
+                    request.selectedInsectId = insect.id;
+                    request.insectId = insect.id;
+                    request.selectedInsect = insect;
+                    if (insect.image_url) {
+                        request.imageUrl = insect.image_url;
+                    }
+                    this.showInsectSearch = false;
+                    this.insectSearchQuery = '';
+                },
+                
+                onInsectSelected(request) {
+                    if (request.selectedInsectId) {
+                        const insect = this.allInsects.find(i => i.id == request.selectedInsectId);
+                        if (insect) {
+                            request.selectedInsect = insect;
+                            request.insectId = insect.id;
+                            if (insect.image_url) {
+                                request.imageUrl = insect.image_url;
+                            }
+                        }
+                    } else {
+                        this.clearSelectedInsect(request);
+                    }
+                },
+                
+                clearSelectedInsect(request) {
+                    request.selectedInsectId = null;
+                    request.insectId = null;
+                    request.selectedInsect = null;
+                    request.imageUrl = '';
+                },
+                
+                async loadRequests() {
+                    this.loading = true;
+                    this.error = null;
+                    try {
+                        const response = await fetch('/api/expert-requests');
+                        console.log('Статус ответа:', response.status);
+                        
+                        if (!response.ok) {
+                            if (response.status === 401) {
+                                this.error = 'Необходима авторизация. Пожалуйста, войдите в систему.';
+                                alert('Необходима авторизация. Пожалуйста, войдите в систему.');
+                                window.location.href = '/login?next=/admin';
+                                return;
+                            }
+                            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                        }
+                        
+                        const data = await response.json();
+                        console.log('Ответ API:', data);
+                        
+                        if (data.success) {
+                            this.requests = (data.requests || []).map(r => ({
+                                ...r,
+                                answerText: '',
+                                imageUrl: '',
+                                insectId: null,
+                                selectedInsectId: null,
+                                selectedInsect: null,
+                                error: ''
+                            }));
+                            console.log('Запросы загружены:', this.requests.length);
+                            if (this.requests.length === 0) {
+                                console.log('Запросов нет в базе данных');
+                            }
+                        } else {
+                            this.error = data.error || 'Неизвестная ошибка';
+                            console.error('Ошибка API:', data.error);
+                            alert('Ошибка загрузки запросов: ' + this.error);
+                        }
+                    } catch (error) {
+                        this.error = error.message;
+                        console.error('Ошибка загрузки запросов:', error);
+                        alert('Ошибка соединения с сервером: ' + error.message);
+                    } finally {
+                        this.loading = false;
+                    }
+                },
+                async submitAnswer(request) {
+                    console.log('Отправка ответа для запроса:', request.id_запроса);
+                    console.log('Данные:', {
+                        answer: request.answerText,
+                        image_url: request.imageUrl,
+                        insect_id: request.insectId || request.selectedInsectId
+                    });
+                    
+                    if (!request.answerText || !request.answerText.trim()) {
+                        request.error = 'Пожалуйста, введите ответ';
+                        alert('Пожалуйста, введите ответ');
+                        return;
+                    }
+                    
+                    this.submitting = true;
+                    request.error = '';
+                    
+                    try {
+                        const requestData = {
+                            answer: request.answerText,
+                            image_url: request.imageUrl || '',
+                            insect_id: request.insectId || request.selectedInsectId || null,
+                            insect_type: request.selectedInsect ? request.selectedInsect.type : null
+                        };
+                        
+                        console.log('Отправка данных:', requestData);
+                        
+                        const response = await fetch(`/api/expert-request/${request.id_запроса}/answer`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(requestData)
+                        });
+                        
+                        console.log('Статус ответа:', response.status);
+                        
+                        if (!response.ok) {
+                            const errorText = await response.text();
+                            console.error('Ошибка ответа:', errorText);
+                            try {
+                                const errorData = JSON.parse(errorText);
+                                request.error = errorData.error || `Ошибка ${response.status}`;
+                            } catch (e) {
+                                request.error = `Ошибка ${response.status}: ${errorText}`;
+                            }
+                            alert('Ошибка: ' + request.error);
+                            return;
+                        }
+                        
+                        const data = await response.json();
+                        console.log('Ответ сервера:', data);
+                        
+                        if (data.success) {
+                            alert('Ответ успешно отправлен!');
+                            await this.loadRequests();
+                        } else {
+                            request.error = data.error || 'Ошибка при отправке ответа';
+                            alert('Ошибка: ' + request.error);
+                        }
+                    } catch (error) {
+                        console.error('Исключение при отправке:', error);
+                        request.error = 'Ошибка соединения с сервером: ' + error.message;
+                        alert('Ошибка: ' + request.error);
+                    } finally {
+                        this.submitting = false;
+                    }
+                },
+                formatDate(dateString) {
+                    if (!dateString) return '';
+                    const date = new Date(dateString);
+                    return date.toLocaleString('ru-RU');
+                }
+            },
+            mounted() {
+                this.loadInsects();
+                this.loadRequests();
+                // Обновляем каждые 30 секунд
+                setInterval(() => this.loadRequests(), 30000);
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>
+

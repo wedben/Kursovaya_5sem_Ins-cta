@@ -36,3 +36,12 @@ app.log
 *.tmp
 *.temp
 
+# Large image files (optional - uncomment if you don't want to commit images)
+# data/**/*.jpg
+# data/**/*.jpeg
+# data/**/*.png
+# data/**/*.webp
+
+# Screenshots
+screenshots/
+

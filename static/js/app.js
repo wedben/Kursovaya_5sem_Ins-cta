@@ -3,6 +3,17 @@ const { createApp } = Vue;
 createApp({
     data() {
         return {
+            currentUser: null,
+            showExpertRequestForm: false,
+            expertRequest: {
+                description: '',
+                location: '',
+                observation_date: '',
+                additional_data: ''
+            },
+            expertRequestError: '',
+            expertRequestSuccess: '',
+            submittingRequest: false,
             selectedType: null,
             loading: false,
             searchPerformed: false,
@@ -530,6 +541,89 @@ createApp({
                 .trim()
                 .replace(/^;\s*/, '')
                 .replace(/\s*;\s*$/, '');
+        },
+        
+        async submitExpertRequest() {
+            if (!this.expertRequest.description.trim()) {
+                this.expertRequestError = 'Описание насекомого обязательно';
+                return;
+            }
+            
+            this.submittingRequest = true;
+            this.expertRequestError = '';
+            this.expertRequestSuccess = '';
+            
+            try {
+                const response = await fetch('/api/expert-request', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(this.expertRequest)
+                });
+                
+                const data = await response.json();
+                if (data.success) {
+                    this.expertRequestSuccess = 'Запрос успешно отправлен эксперту!';
+                    this.resetExpertRequest();
+                    setTimeout(() => {
+                        this.showExpertRequestForm = false;
+                        this.expertRequestSuccess = '';
+                    }, 2000);
+                } else {
+                    this.expertRequestError = data.error || 'Ошибка при отправке запроса';
+                }
+            } catch (error) {
+                this.expertRequestError = 'Ошибка соединения с сервером';
+            } finally {
+                this.submittingRequest = false;
+            }
+        },
+        
+        resetExpertRequest() {
+            this.expertRequest = {
+                description: '',
+                location: '',
+                observation_date: '',
+                additional_data: ''
+            };
+            this.expertRequestError = '';
+            this.expertRequestSuccess = '';
+        },
+        
+        async logout() {
+            try {
+                const response = await fetch('/logout', {
+                    method: 'POST'
+                });
+                const data = await response.json();
+                if (data.success) {
+                    this.currentUser = null;
+                    window.location.reload();
+                }
+            } catch (error) {
+                console.error('Ошибка выхода:', error);
+            }
+        },
+        
+        handleImageError(event) {
+            // Скрываем изображение при ошибке загрузки
+            if (event.target) {
+                event.target.style.display = 'none';
+                const container = event.target.closest('.insect-image-container');
+                if (container) {
+                    container.style.display = 'none';
+                }
+            }
+        }
+    },
+    mounted() {
+        // Получаем данные пользователя из шаблона, если они переданы
+        const userData = document.getElementById('user-data');
+        if (userData) {
+            try {
+                this.currentUser = JSON.parse(userData.textContent);
+            } catch (e) {
+                this.currentUser = null;
+            }
         }
     }
 }).mount('#app');

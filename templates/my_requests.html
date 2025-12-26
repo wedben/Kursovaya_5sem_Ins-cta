@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Мои запросы - Определитель насекомых</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <style>
+        .requests-container {
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .request-card {
+            background: white;
+            border: 2px solid #e0e0e0;
+            border-radius: 15px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+        }
+        .request-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #f0f0f0;
+        }
+        .status-badge {
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-size: 0.9em;
+            font-weight: 600;
+        }
+        .status-ожидает { background: #fff3cd; color: #856404; }
+        .status-в_работе { background: #d1ecf1; color: #0c5460; }
+        .status-отвечено { background: #d4edda; color: #155724; }
+        .status-отклонено { background: #f8d7da; color: #721c24; }
+        .answer-section {
+            margin-top: 20px;
+            padding: 20px;
+            background: #d4edda;
+            border-radius: 10px;
+            border: 2px solid #28a745;
+        }
+        .no-answer {
+            margin-top: 20px;
+            padding: 15px;
+            background: #fff3cd;
+            border-radius: 10px;
+            border: 2px solid #ffc107;
+            text-align: center;
+            color: #856404;
+        }
+    </style>
+</head>
+<body>
+    <div class="requests-container">
+        <header style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; border-radius: 20px; margin-bottom: 30px;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                    <h1>📋 Мои запросы к эксперту</h1>
+                    <p>Просмотр ваших запросов и ответов эксперта</p>
+                </div>
+                <div>
+                    <a href="/" style="color: white; text-decoration: none; padding: 10px 20px; background: rgba(255,255,255,0.2); border-radius: 8px; margin-right: 10px;">На главную</a>
+                    <button onclick="logout()" style="padding: 10px 20px; background: rgba(255,255,255,0.2); color: white; border: none; border-radius: 8px; cursor: pointer;">Выход</button>
+                </div>
+            </div>
+        </header>
+
+        {% raw %}
+        <div id="app">
+            <div v-if="loading" style="text-align: center; padding: 40px;">
+                <div class="spinner"></div>
+                <p>Загрузка запросов...</p>
+            </div>
+
+            <div v-else>
+                <div style="margin-bottom: 20px;">
+                    <h2>Ваши запросы (<span v-text="requests.length"></span>)</h2>
+                    <div style="display: flex; gap: 10px; margin-top: 10px;">
+                        <button @click="filterStatus = ''" :class="{'active': filterStatus === ''}" style="padding: 8px 15px; border: 2px solid #ddd; border-radius: 8px; background: white; cursor: pointer;">Все</button>
+                        <button @click="filterStatus = 'ожидает'" :class="{'active': filterStatus === 'ожидает'}" style="padding: 8px 15px; border: 2px solid #ddd; border-radius: 8px; background: white; cursor: pointer;">Ожидают</button>
+                        <button @click="filterStatus = 'отвечено'" :class="{'active': filterStatus === 'отвечено'}" style="padding: 8px 15px; border: 2px solid #ddd; border-radius: 8px; background: white; cursor: pointer;">Отвеченные</button>
+                    </div>
+                </div>
+
+                <div v-for="request in filteredRequests" :key="request.id_запроса" class="request-card">
+                    <div class="request-header">
+                        <div>
+                            <h3>Запрос #<span v-text="request.id_запроса"></span></h3>
+                            <p style="color: #666; font-size: 0.9em;">
+                                Дата создания: <span v-text="formatDate(request.дата_создания)"></span>
+                            </p>
+                        </div>
+                        <span :class="['status-badge', 'status-' + request.статус]">
+                            <span v-text="request.статус"></span>
+                        </span>
+                    </div>
+
+                    <div style="margin-bottom: 15px;">
+                        <strong>Ваше описание насекомого:</strong>
+                        <p style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin-top: 5px;">
+                            <span v-text="request.описание_насекомого"></span>
+                        </p>
+                    </div>
+
+                    <div v-if="request.место_наблюдения" style="margin-bottom: 10px;">
+                        <strong>Место:</strong> <span v-text="request.место_наблюдения"></span>
+                    </div>
+
+                    <div v-if="request.дата_наблюдения" style="margin-bottom: 10px;">
+                        <strong>Дата наблюдения:</strong> <span v-text="request.дата_наблюдения"></span>
+                    </div>
+
+                    <div v-if="request.дополнительные_данные" style="margin-bottom: 10px;">
+                        <strong>Дополнительно:</strong> <span v-text="request.дополнительные_данные"></span>
+                    </div>
+
+                    <!-- Ответ эксперта -->
+                    <div v-if="request.ответ_эксперта" class="answer-section">
+                        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 15px;">
+                            <span style="font-size: 1.5em;">✅</span>
+                            <h3 style="margin: 0; color: #155724;">Ответ эксперта</h3>
+                        </div>
+                        <p style="margin-bottom: 15px; line-height: 1.6;">
+                            <span v-text="request.ответ_эксперта"></span>
+                        </p>
+                        <!-- Изображение ответа (скрыто) -->
+                        <!-- <div v-if="request.изображение_ответа" style="margin-top: 15px;">
+                            <strong>Изображение:</strong>
+                            <div style="margin-top: 10px;">
+                                <img :src="request.изображение_ответа" 
+                                     alt="Ответ эксперта" 
+                                     style="max-width: 100%; max-height: 400px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+                            </div>
+                        </div> -->
+                        <p v-if="request.дата_ответа" style="margin-top: 15px; font-size: 0.9em; color: #666;">
+                            Ответ получен: <span v-text="formatDate(request.дата_ответа)"></span>
+                        </p>
+                    </div>
+
+                    <div v-else class="no-answer">
+                        <p style="margin: 0;">
+                            <strong>⏳ Ожидание ответа эксперта</strong>
+                        </p>
+                        <p style="margin: 5px 0 0 0; font-size: 0.9em;">
+                            Эксперт рассмотрит ваш запрос и ответит в ближайшее время
+                        </p>
+                    </div>
+                </div>
+
+                <div v-if="filteredRequests.length === 0 && requests.length === 0" style="text-align: center; padding: 40px; color: #666;">
+                    <p style="font-size: 1.2em; margin-bottom: 10px;">У вас пока нет запросов</p>
+                    <p style="font-size: 0.9em;">Создайте запрос к эксперту на <a href="/" style="color: #667eea;">главной странице</a></p>
+                </div>
+                <div v-else-if="filteredRequests.length === 0" style="text-align: center; padding: 40px; color: #666;">
+                    <p>Нет запросов с выбранным статусом</p>
+                </div>
+            </div>
+        </div>
+        {% endraw %}
+    </div>
+
+    <script>
+        const { createApp } = Vue;
+
+        createApp({
+            data() {
+                return {
+                    requests: [],
+                    loading: true,
+                    filterStatus: '',
+                    error: null
+                };
+            },
+            computed: {
+                filteredRequests() {
+                    if (!this.filterStatus) {
+                        return this.requests;
+                    }
+                    return this.requests.filter(r => r.статус === this.filterStatus);
+                }
+            },
+            methods: {
+                async loadRequests() {
+                    this.loading = true;
+                    this.error = null;
+                    try {
+                        const response = await fetch('/api/expert-requests');
+                        console.log('Статус ответа:', response.status);
+                        
+                        if (!response.ok) {
+                            if (response.status === 401) {
+                                this.error = 'Необходима авторизация';
+                                alert('Необходима авторизация. Пожалуйста, войдите в систему.');
+                                window.location.href = '/login?next=/my-requests';
+                                return;
+                            }
+                            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                        }
+                        
+                        const data = await response.json();
+                        console.log('Ответ API:', data);
+                        
+                        if (data.success) {
+                            this.requests = data.requests || [];
+                            console.log('Запросы загружены:', this.requests.length);
+                        } else {
+                            this.error = data.error || 'Неизвестная ошибка';
+                            console.error('Ошибка API:', data.error);
+                        }
+                    } catch (error) {
+                        this.error = error.message;
+                        console.error('Ошибка загрузки запросов:', error);
+                    } finally {
+                        this.loading = false;
+                    }
+                },
+                formatDate(dateString) {
+                    if (!dateString) return '';
+                    const date = new Date(dateString);
+                    return date.toLocaleString('ru-RU');
+                }
+            },
+            mounted() {
+                this.loadRequests();
+                // Обновляем каждые 30 секунд
+                setInterval(() => this.loadRequests(), 30000);
+            }
+        }).mount('#app');
+
+        async function logout() {
+            try {
+                const response = await fetch('/logout', {
+                    method: 'POST'
+                });
+                const data = await response.json();
+                if (data.success) {
+                    window.location.href = '/';
+                }
+            } catch (error) {
+                console.error('Ошибка выхода:', error);
+            }
+        }
+    </script>
+</body>
+</html>
+

@@ -749,6 +749,33 @@ main {
     padding: 20px;
 }
 
+.insect-image-container {
+    width: 100%;
+    margin-bottom: 20px;
+    border-radius: 12px;
+    overflow: hidden;
+    background: #f8f9fa;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 200px;
+    max-height: 400px;
+}
+
+.insect-image {
+    width: 100%;
+    height: auto;
+    max-height: 400px;
+    object-fit: contain;
+    display: block;
+    border-radius: 12px;
+    transition: transform 0.3s ease;
+}
+
+.insect-image:hover {
+    transform: scale(1.05);
+}
+
 .detail-item {
     display: flex;
     align-items: flex-start;
