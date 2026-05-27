@@ -17,18 +17,19 @@
         <header>
             <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap;">
                 <div>
-                    <h1>🦋 Определитель насекомых 🦋</h1>
+                    <h1>Определитель насекомых</h1>
                     <p class="subtitle">Найдите насекомое по его характеристикам</p>
                 </div>
                 <div style="display: flex; gap: 10px; align-items: center;">
                     <span v-if="currentUser" style="color: white; margin-right: 10px;">
-                        👤 {{ currentUser.name }} 
-                        <span v-if="currentUser.role === 'админ'" style="background: rgba(255,255,255,0.3); padding: 2px 8px; border-radius: 10px; font-size: 0.8em;">Админ</span>
+                        {{ currentUser.name }}
                     </span>
                     <a v-if="!currentUser" href="/login" style="color: white; text-decoration: none; padding: 8px 15px; background: rgba(255,255,255,0.2); border-radius: 8px;">Войти</a>
                     <a v-if="!currentUser" href="/register" style="color: white; text-decoration: none; padding: 8px 15px; background: rgba(255,255,255,0.2); border-radius: 8px;">Регистрация</a>
                     <a v-if="currentUser" href="/my-requests" style="color: white; text-decoration: none; padding: 8px 15px; background: rgba(255,255,255,0.2); border-radius: 8px;">Мои запросы</a>
-                    <a v-if="currentUser && currentUser.role === 'админ'" href="/admin" style="color: white; text-decoration: none; padding: 8px 15px; background: rgba(255,255,255,0.2); border-radius: 8px;">Админ-панель</a>
+                    <a v-if="currentUser && (currentUser.role === 'эксперт' || currentUser.role === 'админ')" href="/admin" style="color: white; text-decoration: none; padding: 8px 15px; background: rgba(255,255,255,0.2); border-radius: 8px;">Панель эксперта</a>
+                    <a v-if="currentUser && (currentUser.role === 'модератор' || currentUser.role === 'админ')" href="/moderation" style="color: white; text-decoration: none; padding: 8px 15px; background: rgba(255,255,255,0.2); border-radius: 8px;">Модерация</a>
+                    <a v-if="currentUser && currentUser.role === 'админ'" href="/users" style="color: white; text-decoration: none; padding: 8px 15px; background: rgba(255,255,255,0.2); border-radius: 8px;">Пользователи</a>
                     <button v-if="currentUser" @click="logout" style="color: white; padding: 8px 15px; background: rgba(255,255,255,0.2); border: none; border-radius: 8px; cursor: pointer;">Выход</button>
                 </div>
             </div>
@@ -37,61 +38,62 @@
         <main>
                 <div class="main-actions">
                     <button @click="showAllInsects" class="view-all-btn">
-                        📚 Просмотреть все насекомые
+                        Просмотреть все насекомые
                     </button>
-                    <button v-if="currentUser" @click="showExpertRequestForm = !showExpertRequestForm" class="view-all-btn" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);">
-                        💬 Задать вопрос эксперту
+                    <button v-if="currentUser" @click="openExpertRequestModal" class="view-all-btn" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);">
+                        Задать вопрос эксперту
                     </button>
                 </div>
 
-                <!-- Форма запроса к эксперту -->
-                <div v-if="showExpertRequestForm && currentUser" class="expert-request-form" style="margin: 20px 0; padding: 20px; background: #f8f9fa; border-radius: 15px;">
-                    <h3>📝 Описание насекомого для эксперта</h3>
-                    <p style="color: #666; margin-bottom: 15px;">Опишите насекомое, которое вы видели, и эксперт поможет вам его определить</p>
-                    
-                    <div style="margin-bottom: 15px;">
-                        <label style="display: block; margin-bottom: 5px; font-weight: 600;">Описание насекомого *</label>
-                        <textarea v-model="expertRequest.description" 
-                                  placeholder="Опишите насекомое: размер, цвет, особенности, поведение..."
-                                  style="width: 100%; padding: 12px; border: 2px solid #ddd; border-radius: 8px; min-height: 120px; font-family: inherit;"></textarea>
-                    </div>
-                    
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;">
-                        <div>
-                            <label style="display: block; margin-bottom: 5px; font-weight: 600;">Место наблюдения</label>
-                            <input v-model="expertRequest.location" 
-                                   placeholder="Где вы видели насекомое?"
-                                   style="width: 100%; padding: 12px; border: 2px solid #ddd; border-radius: 8px;">
+                <!-- Модальное окно запроса к эксперту -->
+                <div v-if="showExpertRequestModal" class="modal-backdrop" @click.self="closeExpertRequestModal">
+                    <div class="modal">
+                        <div class="modal-header">
+                            <div>
+                                <h3 style="margin:0;">Запрос эксперту</h3>
+                                <p style="margin:6px 0 0 0; color:#666;">Опишите насекомое и условия наблюдения</p>
+                            </div>
+                            <button class="modal-close" @click="closeExpertRequestModal">Закрыть</button>
                         </div>
-                        <div>
-                            <label style="display: block; margin-bottom: 5px; font-weight: 600;">Дата наблюдения</label>
-                            <input v-model="expertRequest.observation_date" 
-                                   type="date"
-                                   style="width: 100%; padding: 12px; border: 2px solid #ddd; border-radius: 8px;">
+                        <div class="modal-body">
+                            <div class="form-group">
+                                <label>Описание насекомого *</label>
+                                <textarea v-model="expertRequest.description"
+                                          placeholder="Опишите насекомое: размер, цвет, особенности, поведение..."
+                                          style="width: 100%; padding: 12px; border: 2px solid #ddd; border-radius: 8px; min-height: 120px; font-family: inherit;"></textarea>
+                            </div>
+                            <div class="modal-grid">
+                                <div class="form-group">
+                                    <label>Место наблюдения</label>
+                                    <input v-model="expertRequest.location"
+                                           placeholder="Где вы видели насекомое?"
+                                           style="width: 100%; padding: 12px; border: 2px solid #ddd; border-radius: 8px;">
+                                </div>
+                                <div class="form-group">
+                                    <label>Дата наблюдения</label>
+                                    <input v-model="expertRequest.observation_date"
+                                           type="date"
+                                           style="width: 100%; padding: 12px; border: 2px solid #ddd; border-radius: 8px;">
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label>Дополнительная информация</label>
+                                <textarea v-model="expertRequest.additional_data"
+                                          placeholder="Любая дополнительная информация..."
+                                          style="width: 100%; padding: 12px; border: 2px solid #ddd; border-radius: 8px; min-height: 80px; font-family: inherit;"></textarea>
+                            </div>
+                            <div v-if="expertRequestError" style="color: #dc3545; margin-top: 10px;">{{ expertRequestError }}</div>
+                            <div v-if="expertRequestSuccess" style="color: #28a745; margin-top: 10px;">{{ expertRequestSuccess }}</div>
+                        </div>
+                        <div class="modal-footer">
+                            <button @click="closeExpertRequestModal" class="modal-btn secondary">Отмена</button>
+                            <button @click="submitExpertRequest"
+                                    :disabled="!expertRequest.description || submittingRequest"
+                                    class="modal-btn primary">
+                                {{ submittingRequest ? 'Отправка...' : 'Отправить' }}
+                            </button>
                         </div>
                     </div>
-                    
-                    <div style="margin-bottom: 15px;">
-                        <label style="display: block; margin-bottom: 5px; font-weight: 600;">Дополнительная информация</label>
-                        <textarea v-model="expertRequest.additional_data" 
-                                  placeholder="Любая дополнительная информация..."
-                                  style="width: 100%; padding: 12px; border: 2px solid #ddd; border-radius: 8px; min-height: 80px; font-family: inherit;"></textarea>
-                    </div>
-                    
-                    <div style="display: flex; gap: 10px;">
-                        <button @click="submitExpertRequest" 
-                                :disabled="!expertRequest.description || submittingRequest"
-                                style="padding: 12px 30px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 1em;">
-                            {{ submittingRequest ? 'Отправка...' : 'Отправить эксперту' }}
-                        </button>
-                        <button @click="showExpertRequestForm = false; resetExpertRequest()" 
-                                style="padding: 12px 30px; background: #6c757d; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 1em;">
-                            Отмена
-                        </button>
-                    </div>
-                    
-                    <div v-if="expertRequestError" style="color: red; margin-top: 10px;">{{ expertRequestError }}</div>
-                    <div v-if="expertRequestSuccess" style="color: green; margin-top: 10px;">{{ expertRequestSuccess }}</div>
                 </div>
 
                 <div class="search-section">
@@ -105,23 +107,22 @@
                             :class="{ active: selectedType === type.value }"
                             @click="selectType(type.value)"
                         >
-                            <span v-if="type.image" class="icon icon-image">
-                                <img :src="type.image" :alt="type.label" class="insect-icon-img">
+                            <span class="insect-btn-icon" :class="{ 'insect-btn-icon--image': type.image }">
+                                <img v-if="type.image" :src="type.image" :alt="type.label" class="insect-icon-img">
+                                <span v-else-if="type.icon" class="insect-emoji">{{ type.icon }}</span>
                             </span>
-                            <span v-else class="icon">{{ type.icon }}</span>
-                            <span>{{ type.label }}</span>
+                            <span class="insect-btn-label">{{ type.label }}</span>
                         </button>
                     </div>
                     
                     <div v-if="selectedType" class="params-form">
-                        <h3>🔍 Укажите параметры поиска:</h3>
+                        <h3>Укажите параметры поиска:</h3>
                         
                         <!-- ФИЛЬТРЫ ДЛЯ СТРЕКОЗ -->
                         <div v-if="selectedType === 'dragonfly'" class="filters-grid">
                             <!-- Пол стрекозы -->
                             <div class="filter-card">
                                 <div class="filter-header">
-                                    <span class="filter-icon">⚥</span>
                                     <label>Пол</label>
                                 </div>
                                 <div class="gender-buttons">
@@ -145,7 +146,6 @@
                             <!-- Длина тела -->
                             <div class="filter-card">
                                 <div class="filter-header">
-                                    <span class="filter-icon">📏</span>
                                     <label>Длина тела (мм)</label>
                                 </div>
                                 <div class="size-inputs">
@@ -158,7 +158,6 @@
                             <!-- Размах крыльев -->
                             <div class="filter-card">
                                 <div class="filter-header">
-                                    <span class="filter-icon">🦋</span>
                                     <label>Размах крыльев (мм)</label>
                                 </div>
                                 <div class="size-inputs">
@@ -171,7 +170,6 @@
                             <!-- Основной цвет -->
                             <div class="filter-card">
                                 <div class="filter-header">
-                                    <span class="filter-icon">🎨</span>
                                     <label>Основной цвет</label>
                                 </div>
                                 <div class="color-quick-select">
@@ -199,7 +197,6 @@
                             <!-- Цвет глаз -->
                             <div class="filter-card">
                                 <div class="filter-header">
-                                    <span class="filter-icon">👁️</span>
                                     <label>Цвет глаз</label>
                                 </div>
                                 <div class="color-quick-select">
@@ -227,7 +224,6 @@
                             <!-- Место нахождения -->
                             <div class="filter-card">
                                 <div class="filter-header">
-                                    <span class="filter-icon">📍</span>
                                     <label>Место нахождения</label>
                                 </div>
                                 <div class="color-tags">
@@ -252,7 +248,6 @@
                             <!-- Среда (тип водоёма) -->
                             <div class="filter-card">
                                 <div class="filter-header">
-                                    <span class="filter-icon">💧</span>
                                     <label>Среда (тип водоёма)</label>
                                 </div>
                                 <select v-model="searchParams.environment" class="select-input">
@@ -266,7 +261,6 @@
                             <!-- Период -->
                             <div class="filter-card">
                                 <div class="filter-header">
-                                    <span class="filter-icon">📅</span>
                                     <label>Период</label>
                                 </div>
                                 <select v-model="searchParams.season" class="select-input">
@@ -283,7 +277,6 @@
                             <!-- Длина тела -->
                             <div class="filter-card">
                                 <div class="filter-header">
-                                    <span class="filter-icon">📏</span>
                                     <label>Длина тела (мм)</label>
                                 </div>
                                 <div class="size-inputs">
@@ -296,7 +289,6 @@
                             <!-- Основной цвет -->
                             <div class="filter-card">
                                 <div class="filter-header">
-                                    <span class="filter-icon">🎨</span>
                                     <label>Основной цвет</label>
                                 </div>
                                 <div class="color-quick-select">
@@ -324,7 +316,6 @@
                             <!-- Тип поверхности / Блеск -->
                             <div class="filter-card">
                                 <div class="filter-header">
-                                    <span class="filter-icon">✨</span>
                                     <label>Тип поверхности / Блеск</label>
                                 </div>
                                 <div class="color-tags">
@@ -349,7 +340,6 @@
                             <!-- Надкрылья -->
                             <div class="filter-card">
                                 <div class="filter-header">
-                                    <span class="filter-icon">🛡️</span>
                                     <label>Надкрылья</label>
                                 </div>
                                 <div class="color-tags">
@@ -374,7 +364,6 @@
                             <!-- Место нахождения -->
                             <div class="filter-card">
                                 <div class="filter-header">
-                                    <span class="filter-icon">📍</span>
                                     <label>Место нахождения</label>
                                 </div>
                                 <div class="color-tags">
@@ -399,7 +388,6 @@
                             <!-- Период активности -->
                             <div class="filter-card">
                                 <div class="filter-header">
-                                    <span class="filter-icon">📅</span>
                                     <label>Активность / Период</label>
                                 </div>
                                 <div class="color-tags">
@@ -427,7 +415,6 @@
                             <!-- Размах крыльев -->
                             <div class="filter-card">
                                 <div class="filter-header">
-                                    <span class="filter-icon">🦋</span>
                                     <label>Размах крыльев (мм)</label>
                                 </div>
                                 <div class="size-inputs">
@@ -440,7 +427,6 @@
                             <!-- Основной цвет крыльев -->
                             <div class="filter-card">
                                 <div class="filter-header">
-                                    <span class="filter-icon">🎨</span>
                                     <label>Основной цвет крыльев</label>
                                 </div>
                                 <div class="color-quick-select">
@@ -468,7 +454,6 @@
                             <!-- Особенности рисунка крыльев -->
                             <div class="filter-card">
                                 <div class="filter-header">
-                                    <span class="filter-icon">🎭</span>
                                     <label>Особенности рисунка крыльев</label>
                                 </div>
                                 <div class="color-tags">
@@ -493,7 +478,6 @@
                             <!-- Время суток (день/ночь) -->
                             <div class="filter-card">
                                 <div class="filter-header">
-                                    <span class="filter-icon">🌓</span>
                                     <label>Время суток</label>
                                 </div>
                                 <div class="time-buttons">
@@ -509,7 +493,7 @@
                                         :class="{ active: searchParams.timeOfDay === 'ночь' }"
                                         @click="searchParams.timeOfDay = searchParams.timeOfDay === 'ночь' ? '' : 'ночь'"
                                     >
-                                        🌙 Ночная
+                                        Ночная
                                     </button>
                                 </div>
                             </div>
@@ -517,7 +501,6 @@
                             <!-- Место нахождения -->
                             <div class="filter-card">
                                 <div class="filter-header">
-                                    <span class="filter-icon">📍</span>
                                     <label>Место нахождения</label>
                                 </div>
                                 <div class="color-tags">
@@ -542,7 +525,6 @@
                             <!-- Период лёта -->
                             <div class="filter-card">
                                 <div class="filter-header">
-                                    <span class="filter-icon">📅</span>
                                     <label>Период лёта</label>
                                 </div>
                                 <div class="color-tags">
@@ -567,12 +549,12 @@
                         
                         <div class="action-buttons">
                             <button @click="searchInsects" class="search-btn" :disabled="loading">
-                                <span v-if="!loading">🔍</span>
+                                <span v-if="!loading">Найти</span>
                                 <span v-else class="spinner-small"></span>
                                 {{ loading ? 'Поиск...' : 'Найти насекомых' }}
                             </button>
                             <button @click="clearForm" class="clear-btn">
-                                🗑️ Очистить фильтры
+                                Очистить фильтры
                             </button>
                         </div>
                     </div>
@@ -595,7 +577,6 @@
                     <!-- Поиск в режиме просмотра всех -->
                     <div v-if="viewingAll" class="view-all-search">
                         <div class="search-box">
-                            <span class="search-icon">🔍</span>
                             <input 
                                 type="text" 
                                 v-model="viewAllSearchQuery"
@@ -633,43 +614,29 @@
                     <div v-if="results.length === 0" class="no-results">
                         К сожалению, по вашим параметрам ничего не найдено. Попробуйте изменить критерии поиска.
                     </div>
-                    <div v-else class="results-container">
+                    <div v-else class="results-container" :class="{ 'view-all-mode': viewingAll }">
                         <div v-for="insect in (viewingAll ? filteredViewAllResults : results)" :key="insect.id" class="insect-card">
                             <div class="card-header" :class="{ 'male-card': extractGender(insect.description) === 'самец', 'female-card': extractGender(insect.description) === 'самка' }">
-                                <div class="card-icon">
-                                    <img v-if="isImageIcon(getTypeIcon(insect.insect_type || selectedType))" 
-                                         :src="getTypeIcon(insect.insect_type || selectedType)" 
-                                         :alt="getTypeLabel(insect.insect_type || selectedType)"
-                                         class="card-icon-img">
-                                    <span v-else>{{ getTypeIcon(insect.insect_type || selectedType) }}</span>
-                                </div>
                                 <div class="card-title">
-                                    <div class="title-row">
-                                        <h3>{{ insect.name_ru || 'Не указано' }}</h3>
-                                        <div v-if="extractGender(insect.description)" class="gender-badge" :class="extractGender(insect.description)">
-                                            <span class="gender-icon">{{ getGenderIcon(extractGender(insect.description)) }}</span>
+                                    <h3 class="card-name">{{ insect.name_ru || 'Не указано' }}</h3>
+                                    <div class="card-gender-slot">
+                                        <span v-if="extractGender(insect.description)" class="gender-badge" :class="extractGender(insect.description)">
                                             <span class="gender-text">{{ extractGender(insect.description) }}</span>
-                                        </div>
+                                        </span>
                                     </div>
-                                    <div v-if="insect.name_lat" class="name-lat">{{ insect.name_lat }}</div>
-                                    <div v-if="insect.insect_type && viewingAll" class="insect-type-badge">
-                                        {{ getTypeLabel(insect.insect_type) }}
+                                    <div class="card-latin-slot">
+                                        <span v-if="insect.name_lat" class="name-lat">{{ insect.name_lat }}</span>
+                                    </div>
+                                    <div class="card-type-slot" :class="{ 'is-visible': viewingAll && insect.insect_type }">
+                                        <span v-if="insect.insect_type && viewingAll" class="insect-type-badge">
+                                            {{ getTypeLabel(insect.insect_type) }}
+                                        </span>
                                     </div>
                                 </div>
                             </div>
                             
                             <div class="card-body">
-                                <!-- Изображение насекомого (скрыто) -->
-                                <!-- <div v-if="insect.image_url" class="insect-image-container">
-                                    <img :src="insect.image_url" 
-                                         :alt="insect.name_ru || 'Изображение насекомого'"
-                                         class="insect-image"
-                                         @error="handleImageError"
-                                         loading="lazy">
-                                </div> -->
-                                
                                 <div v-if="insect.size_min || insect.size_max" class="detail-item">
-                                    <span class="detail-icon">📏</span>
                                     <div class="detail-content">
                                         <strong>Размер:</strong> 
                                         <span class="detail-value">{{ formatSize(insect.size_min, insect.size_max) }}</span>
@@ -677,7 +644,6 @@
                                 </div>
                                 
                                 <div v-if="insect.color" class="detail-item">
-                                    <span class="detail-icon">🎨</span>
                                     <div class="detail-content">
                                         <strong>Цвет:</strong> 
                                         <span class="detail-value color-badge">{{ insect.color }}</span>
@@ -685,7 +651,6 @@
                     </div>
                     
                                 <div v-if="insect.habitat" class="detail-item">
-                                    <span class="detail-icon">🌳</span>
                                     <div class="detail-content">
                                         <strong>Место обитания:</strong> 
                                         <span class="detail-value">{{ insect.habitat }}</span>
@@ -693,7 +658,6 @@
             </div>
 
                                 <div v-if="insect.season" class="detail-item">
-                                    <span class="detail-icon">📅</span>
                                     <div class="detail-content">
                                         <strong>Период:</strong> 
                                         <span class="detail-value">{{ insect.season }}</span>

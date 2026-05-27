@@ -1,12 +1,20 @@
-from flask import Flask, render_template, request, jsonify, send_from_directory, session, redirect, url_for
+from flask import Flask, render_template, request, jsonify, send_from_directory, session, redirect, url_for, make_response
 from flask_login import LoginManager, login_user, logout_user, login_required, current_user
 from database import Database
 from auth import User
+from validators import (
+    v_trim, v_first_name, v_last_name, v_email, v_login,
+    v_password, v_gender, v_age_status, v_rules_checked,
+)
+from recaptcha import recaptcha_enabled, recaptcha_site_key, recaptcha_verify
 import os
 import re
 from pathlib import Path
 from datetime import datetime
 from typing import Optional
+from dotenv import load_dotenv
+
+load_dotenv()
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'dev-secret-key-change-in-production-12345')
@@ -22,6 +30,58 @@ def load_user(user_id):
     return User.get_by_id(int(user_id))
 
 db = Database()
+
+def _login_block_guard():
+    # Если пользователь заблокирован, не даём авторизоваться в UI/API.
+    if current_user.is_authenticated and getattr(current_user, 'blocked_until', None):
+        try:
+            logout_user()
+        except Exception:
+            pass
+
+def _require_roles(*roles: str):
+    def decorator(fn):
+        def wrapped(*args, **kwargs):
+            if not current_user.is_authenticated:
+                return jsonify({'error': 'Требуется вход'}), 401
+            if getattr(current_user, 'blocked_until', None):
+                return jsonify({'error': 'Доступ временно ограничен'}), 403
+            if getattr(current_user, 'blocked_permanent', False):
+                return jsonify({'error': 'Доступ заблокирован'}), 403
+            if current_user.role not in roles:
+                return jsonify({'error': 'Доступ запрещен'}), 403
+            return fn(*args, **kwargs)
+        wrapped.__name__ = fn.__name__
+        return wrapped
+    return decorator
+
+def _contains_profanity(text: str) -> bool:
+    # Простой фильтр; модератор решает окончательно.
+    if not text:
+        return False
+    bad = [
+        r'\bсука\b', r'\bбля(ть|дь)?\b', r'\bхуй\b', r'\bпизд',
+        r'\bеба', r'\bнахуй\b', r'\bидиот\b',
+    ]
+    t = text.lower()
+    return any(re.search(p, t) for p in bad)
+
+def theme_get() -> str:
+    theme = session.get('theme', 'light')
+    return 'dark' if theme == 'dark' else 'light'
+
+def auth_context():
+    return {
+        'recaptcha_site_key': recaptcha_site_key(),
+    }
+
+def _verify_recaptcha(errors: dict, token: str):
+    if recaptcha_enabled():
+        res = recaptcha_verify(token, request.remote_addr)
+        if not res['ok']:
+            errors['recaptcha'] = res.get('error', 'reCAPTCHA не пройдена.')
+    else:
+        errors['recaptcha'] = 'reCAPTCHA не настроена (нет ключей на сервере).'
 
 # Путь к папке с изображениями
 IMAGE_BASE_DIR = Path(__file__).parent / 'data'
@@ -40,75 +100,73 @@ def find_insect_image(insect_name: str, insect_type: str, description: str = '')
     """
     if not insect_name:
         return ''
-    
-    # Определяем папку с изображениями
+
     folder_map = {
         'dragonfly': 'Стрекозы',
-        'beetle': 'жужелицы',  # Если есть папка для жуков
+        'beetle': 'жужелицы',
         'butterfly': 'бабочки'
     }
-    
+
     folder_name = folder_map.get(insect_type)
     if not folder_name:
         return ''
-    
+
     image_dir = IMAGE_BASE_DIR / folder_name
     if not image_dir.exists():
         return ''
-    
-    # Нормализуем название для поиска
-    name_lower = insect_name.lower().strip()
-    
-    # Извлекаем пол из описания, если есть
+
+    name_slug = re.sub(r'\s+', '-', insect_name.lower().strip())
+    name_slug = re.sub(r'_', '-', name_slug)
+
     gender = ''
     if description:
-        if 'самец' in description.lower() or '(самец)' in description.lower():
+        desc_lower = description.lower()
+        if 'самец' in desc_lower and 'самка' not in desc_lower:
             gender = 'самец'
-        elif 'самка' in description.lower() or '(самка)' in description.lower():
+        elif 'самка' in desc_lower and 'самец' not in desc_lower:
             gender = 'самка'
-    
-    # Получаем список всех изображений
-    image_files = list(image_dir.glob('*.jpg')) + list(image_dir.glob('*.JPG')) + list(image_dir.glob('*.webp'))
-    
-    # Создаем список кандидатов с приоритетами
+
+    image_files = (
+        list(image_dir.glob('*.jpg')) +
+        list(image_dir.glob('*.JPG')) +
+        list(image_dir.glob('*.webp')) +
+        list(image_dir.glob('*.WEBP'))
+    )
+
+    def stem_base(stem: str) -> str:
+        base = re.sub(r'\(самец\)|\(самка\d*\)', '', stem.lower(), flags=re.IGNORECASE)
+        return base.strip('-')
+
     candidates = []
-    
+
     for img_file in image_files:
-        filename_lower = img_file.stem.lower()
-        
-        # Убираем расширение и нормализуем
-        filename_clean = filename_lower.replace('(', '').replace(')', '').replace('-', ' ').replace('_', ' ')
-        name_clean = name_lower.replace('-', ' ').replace('_', ' ')
-        
-        # Разбиваем на слова
-        filename_words = set(filename_clean.split())
-        name_words = set(name_clean.split())
-        
-        # Проверяем совпадение
-        common_words = filename_words.intersection(name_words)
-        
-        if common_words:
-            # Приоритет: точное совпадение > частичное совпадение
-            priority = len(common_words)
-            
-            # Учитываем пол, если указан
-            if gender:
-                if gender in filename_lower:
-                    priority += 10  # Большой бонус за совпадение пола
-                elif '(самец)' in filename_lower or '(самка)' in filename_lower:
-                    priority -= 5  # Штраф, если пол не совпадает
-            
-            candidates.append((priority, img_file))
-    
-    # Сортируем по приоритету (больше = лучше)
+        stem = img_file.stem.lower()
+        base = stem_base(stem)
+
+        if base == name_slug:
+            priority = 100
+        elif base.startswith(name_slug + '-') or name_slug.startswith(base):
+            priority = 80
+        else:
+            name_parts = [p for p in name_slug.split('-') if len(p) > 2]
+            if not name_parts or not all(part in base for part in name_parts):
+                continue
+            priority = len(name_parts) * 10
+
+        if gender:
+            if f'({gender})' in stem or f'({gender}' in stem:
+                priority += 25
+            elif 'самец' in stem or 'самка' in stem:
+                priority -= 40
+
+        candidates.append((priority, img_file))
+
     candidates.sort(key=lambda x: x[0], reverse=True)
-    
-    if candidates:
-        best_match = candidates[0][1]
-        # Возвращаем относительный путь для URL
-        relative_path = best_match.relative_to(IMAGE_BASE_DIR)
+
+    if candidates and candidates[0][0] >= 20:
+        relative_path = candidates[0][1].relative_to(IMAGE_BASE_DIR)
         return f'/data/{relative_path.as_posix()}'
-    
+
     return ''
 
 @app.route('/')
@@ -124,80 +182,189 @@ def index():
         }
     return render_template('index.html', user=user_data)
 
+@app.route('/theme_toggle')
+def theme_toggle():
+    """Переключение светлой/тёмной темы (как theme_toggle.php)."""
+    session['theme'] = 'light' if theme_get() == 'dark' else 'dark'
+    return redirect(request.referrer or url_for('index'))
+
 @app.route('/login', methods=['GET', 'POST'])
 def login():
-    """Страница входа"""
+    """Страница входа по логину и паролю + reCAPTCHA."""
+    if current_user.is_authenticated:
+        return redirect(url_for('index'))
+
+    errors = {}
+    login_value = ''
+
     if request.method == 'POST':
-        data = request.json
-        username = data.get('username')
-        password = data.get('password')
-        
-        if not username or not password:
-            return jsonify({'error': 'Логин и пароль обязательны'}), 400
-        
-        user = User.verify_password(username, password)
-        if user:
-            login_user(user)
-            return jsonify({
-                'success': True,
-                'user': {
-                    'id': user.id,
-                    'username': user.username,
-                    'name': user.name,
-                    'role': user.role
-                }
-            })
-        else:
-            return jsonify({'error': 'Неверный логин или пароль'}), 401
-    
-    return render_template('login.html')
+        _login_block_guard()
+        login_value = v_trim(request.form.get('login', ''))
+        password = request.form.get('password', '')
+        recaptcha_token = request.form.get('g-recaptcha-response', '')
+
+        if not login_value:
+            errors['login'] = 'Логин обязателен.'
+        if not password:
+            errors['password'] = 'Пароль обязателен.'
+
+        _verify_recaptcha(errors, recaptcha_token)
+
+        if not errors:
+            user = User.verify_password(login_value, password)
+            if not user:
+                errors['common'] = 'Неверный логин или пароль.'
+            else:
+                if getattr(user, 'blocked_permanent', False):
+                    errors['common'] = 'Доступ заблокирован.'
+                    ctx = auth_context()
+                    ctx.update({'errors': errors, 'login': login_value})
+                    return render_template('login.html', **ctx), 403
+                if getattr(user, 'blocked_until', None):
+                    errors['common'] = 'Доступ временно ограничен.'
+                    ctx = auth_context()
+                    ctx.update({'errors': errors, 'login': login_value})
+                    return render_template('login.html', **ctx), 403
+                login_user(user)
+                session['theme'] = user.theme
+                return redirect(url_for('index'))
+
+    ctx = auth_context()
+    ctx.update({'errors': errors, 'login': login_value})
+    return render_template('login.html', **ctx)
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
-    """Страница регистрации"""
-    if request.method == 'POST':
-        data = request.json
-        username = data.get('username')
-        password = data.get('password')
-        email = data.get('email')
-        name = data.get('name')
-        
-        if not all([username, password, email, name]):
-            return jsonify({'error': 'Все поля обязательны'}), 400
-        
-        # Проверяем, существует ли пользователь
-        if User.get_by_username(username):
-            return jsonify({'error': 'Пользователь с таким логином уже существует'}), 400
-        
-        user = User.create_user(username, email, password, name, 'пользователь')
-        if user:
-            login_user(user)
-            return jsonify({
-                'success': True,
-                'user': {
-                    'id': user.id,
-                    'username': user.username,
-                    'name': user.name,
-                    'role': user.role
-                }
-            })
-        else:
-            return jsonify({'error': 'Ошибка при создании пользователя'}), 500
-    
-    return render_template('register.html')
+    """Страница регистрации с полной валидацией (как register.php)."""
+    if current_user.is_authenticated:
+        return redirect(url_for('index'))
 
-@app.route('/logout', methods=['POST'])
+    errors = {}
+    old = {
+        'first_name': '',
+        'last_name': '',
+        'email': '',
+        'login': '',
+        'age_status': '18plus',
+        'gender': 'male',
+        'rules': False,
+    }
+    old_passwords = {'password': '', 'password_confirm': ''}
+
+    if request.method == 'POST':
+        first = request.form.get('first_name', '')
+        last = request.form.get('last_name', '')
+        email = request.form.get('email', '')
+        login_val = request.form.get('login', '')
+        password = request.form.get('password', '')
+        password_confirm = request.form.get('password_confirm', '')
+        gender = request.form.get('gender', '')
+        age = request.form.get('age_status', '')
+        rules = request.form.get('rules')
+        recaptcha_token = request.form.get('g-recaptcha-response', '')
+
+        old_passwords = {
+            'password': password,
+            'password_confirm': password_confirm,
+        }
+        old = {
+            'first_name': v_trim(first),
+            'last_name': v_trim(last),
+            'email': v_trim(email),
+            'login': v_trim(login_val),
+            'age_status': age,
+            'gender': gender,
+            'rules': bool(rules),
+        }
+
+        for field, msg in [
+            ('first_name', v_first_name(first)),
+            ('last_name', v_last_name(last)),
+            ('email', v_email(email)),
+            ('login', v_login(login_val)),
+            ('password', v_password(password)),
+        ]:
+            if msg:
+                errors[field] = msg
+
+        if password != password_confirm:
+            errors['password_confirm'] = 'Подтверждение пароля не совпадает.'
+        if msg := v_gender(gender):
+            errors['gender'] = msg
+        if msg := v_age_status(age):
+            errors['age_status'] = msg
+        if msg := v_rules_checked(rules):
+            errors['rules'] = msg
+
+        _verify_recaptcha(errors, recaptcha_token)
+
+        if not errors:
+            unique = User.check_unique(old['email'], old['login'])
+            if unique['email_exists']:
+                errors['email'] = 'Пользователь с такой почтой уже существует.'
+            if unique['login_exists']:
+                errors['login'] = 'Пользователь с таким логином уже существует.'
+
+        if not errors:
+            theme = theme_get()
+            user = User.create_user(
+                login=old['login'],
+                email=old['email'],
+                password=password,
+                first_name=old['first_name'],
+                last_name=old['last_name'],
+                gender=old['gender'],
+                age_status=old['age_status'],
+                theme=theme,
+            )
+            if not user:
+                errors['common'] = 'Не удалось зарегистрироваться. Попробуйте ещё раз.'
+            else:
+                login_user(user)
+                session['theme'] = theme
+                return redirect(url_for('index'))
+
+    ctx = auth_context()
+    ctx.update({'errors': errors, 'old': old, 'old_passwords': old_passwords})
+    return render_template('register.html', **ctx)
+
+@app.route('/api/check_unique', methods=['POST'])
+def check_unique():
+    """AJAX: проверка уникальности email/login."""
+    email = v_trim(request.form.get('email', ''))
+    login_val = v_trim(request.form.get('login', ''))
+
+    if not email and not login_val:
+        return jsonify({'ok': True, 'email_exists': False, 'login_exists': False})
+
+    try:
+        unique = User.check_unique(email, login_val)
+    except Exception:
+        return jsonify({'ok': False, 'error': 'Сервис временно недоступен'}), 503
+
+    resp = make_response(jsonify({
+        'ok': True,
+        'email_exists': unique['email_exists'],
+        'login_exists': unique['login_exists'],
+    }))
+    resp.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+    return resp
+
+@app.route('/logout', methods=['GET', 'POST'])
 @login_required
 def logout():
-    """Выход из системы"""
+    """Выход из системы."""
     logout_user()
-    return jsonify({'success': True})
+    session.clear()
+    if request.method == 'POST' or request.is_json:
+        return jsonify({'success': True})
+    return redirect(url_for('login'))
 
 @app.route('/admin')
 @login_required
 def admin_panel():
     """Админ-панель"""
-    if not current_user.is_admin():
+    if not current_user.can_manage_requests():
         return jsonify({'error': 'Доступ запрещен'}), 403
     user_data = {
         'id': current_user.id,
@@ -206,6 +373,22 @@ def admin_panel():
         'role': current_user.role
     }
     return render_template('admin.html', user=user_data)
+
+@app.route('/moderation')
+@login_required
+def moderation_panel():
+    """Панель модерации (очередь запросов)"""
+    if not (current_user.is_moderator() or current_user.is_admin()):
+        return jsonify({'error': 'Доступ запрещен'}), 403
+    return render_template('moderation.html')
+
+@app.route('/users')
+@login_required
+def users_panel():
+    """Управление пользователями (для модератора)"""
+    if not (current_user.is_moderator() or current_user.is_admin()):
+        return jsonify({'error': 'Доступ запрещен'}), 403
+    return render_template('users.html')
 
 @app.route('/my-requests')
 @login_required
@@ -218,6 +401,46 @@ def my_requests():
         'role': current_user.role
     }
     return render_template('my_requests.html', user=user_data)
+
+@app.route('/api/whoami', methods=['GET'])
+def whoami():
+    if not current_user.is_authenticated:
+        return jsonify({'authenticated': False}), 200
+    return jsonify({
+        'authenticated': True,
+        'user': {
+            'id': current_user.id,
+            'username': current_user.username,
+            'name': current_user.name,
+            'role': current_user.role
+        }
+    })
+
+@app.route('/api/users', methods=['GET'])
+@login_required
+def list_users():
+    """Список пользователей для панели модератора"""
+    if not (current_user.is_moderator() or current_user.is_admin()):
+        return jsonify({'error': 'Доступ запрещен'}), 403
+    from psycopg2.extras import RealDictCursor
+    conn = db.get_connection()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    try:
+        cur.execute("""
+            SELECT id_пользователя, username, email, имя, роль, warnings_count, blocked_until, дата_регистрации
+            FROM "Пользователь"
+            ORDER BY id_пользователя DESC
+        """)
+        rows = [dict(r) for r in cur.fetchall()]
+        for r in rows:
+            if r.get('blocked_until'):
+                r['blocked_until'] = r['blocked_until'].isoformat()
+            if r.get('дата_регистрации'):
+                r['дата_регистрации'] = str(r['дата_регистрации'])
+        return jsonify({'success': True, 'users': rows})
+    finally:
+        cur.close()
+        conn.close()
 
 @app.route('/api/search', methods=['POST'])
 def search_insects():
@@ -319,6 +542,9 @@ def create_expert_request():
         
         if not description:
             return jsonify({'error': 'Описание насекомого обязательно'}), 400
+
+        if getattr(current_user, 'blocked_until', None):
+            return jsonify({'error': 'Доступ временно ограничен'}), 403
         
         conn = db.get_connection()
         cursor = conn.cursor()
@@ -327,21 +553,305 @@ def create_expert_request():
             cursor.execute("""
                 INSERT INTO "ЗапросЭксперту" 
                 (id_пользователя, описание_насекомого, место_наблюдения, дата_наблюдения, дополнительные_данные, статус)
-                VALUES (%s, %s, %s, %s, %s, 'ожидает')
+                VALUES (%s, %s, %s, %s, %s, 'на_модерации')
                 RETURNING id_запроса
             """, (current_user.id, description, location, observation_date or None, additional_data))
             
             request_id = cursor.fetchone()[0]
+
+            # Первое сообщение в чате
+            cursor.execute("""
+                INSERT INTO "СообщениеЗапроса" (id_запроса, id_отправителя, текст)
+                VALUES (%s, %s, %s)
+            """, (request_id, current_user.id, description))
+
             conn.commit()
             
             return jsonify({
                 'success': True,
                 'request_id': request_id,
-                'message': 'Запрос отправлен эксперту'
+                'message': 'Запрос отправлен на проверку'
             })
         finally:
             cursor.close()
             conn.close()
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/request/<int:request_id>')
+@login_required
+def request_chat(request_id: int):
+    """Страница чата по запросу"""
+    return render_template('request_chat.html', request_id=request_id)
+
+@app.route('/api/expert-request/<int:request_id>', methods=['GET'])
+@login_required
+def get_expert_request_details(request_id: int):
+    """Детали запроса + сообщения"""
+    from psycopg2.extras import RealDictCursor
+    conn = db.get_connection()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    try:
+        cur.execute("""SELECT * FROM "ЗапросЭксперту" WHERE id_запроса=%s""", (request_id,))
+        req = cur.fetchone()
+        if not req:
+            return jsonify({'error': 'Запрос не найден'}), 404
+
+        # Доступ: владелец, назначенный эксперт, модератор
+        if not (current_user.is_moderator() or req['id_пользователя'] == current_user.id or req.get('id_эксперта') == current_user.id):
+            return jsonify({'error': 'Доступ запрещен'}), 403
+
+        cur.execute("""
+            SELECT id_сообщения, id_отправителя, текст, дата_создания
+            FROM "СообщениеЗапроса"
+            WHERE id_запроса=%s
+            ORDER BY дата_создания ASC
+        """, (request_id,))
+        msgs = [dict(r) for r in cur.fetchall()]
+        for m in msgs:
+            if m.get('дата_создания'):
+                m['дата_создания'] = m['дата_создания'].isoformat()
+
+        # сериализация дат
+        for k in ('дата_создания', 'дата_ответа', 'дата_закрытия'):
+            if req.get(k):
+                req[k] = req[k].isoformat() if hasattr(req[k], 'isoformat') else str(req[k])
+        if req.get('дата_наблюдения'):
+            req['дата_наблюдения'] = str(req['дата_наблюдения'])
+
+        return jsonify({'success': True, 'request': dict(req), 'messages': msgs})
+    finally:
+        cur.close()
+        conn.close()
+
+@app.route('/api/expert-request/<int:request_id>/message', methods=['POST'])
+@login_required
+def post_request_message(request_id: int):
+    """Добавить сообщение в чат"""
+    data = request.json or {}
+    text = (data.get('text') or '').strip()
+    if not text:
+        return jsonify({'error': 'Текст сообщения обязателен'}), 400
+    if getattr(current_user, 'blocked_until', None):
+        return jsonify({'error': 'Доступ временно ограничен'}), 403
+
+    conn = db.get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute("""SELECT id_пользователя, id_эксперта, статус FROM "ЗапросЭксперту" WHERE id_запроса=%s""", (request_id,))
+        row = cur.fetchone()
+        if not row:
+            return jsonify({'error': 'Запрос не найден'}), 404
+        owner_id, expert_id, status = row
+
+        allowed = (owner_id == current_user.id) or (expert_id == current_user.id) or current_user.is_moderator()
+        if not allowed:
+            return jsonify({'error': 'Доступ запрещен'}), 403
+        if status in ('закрыт', 'удален_модератором'):
+            return jsonify({'error': 'Запрос закрыт'}), 400
+
+        cur.execute("""INSERT INTO "СообщениеЗапроса" (id_запроса, id_отправителя, текст) VALUES (%s,%s,%s)""",
+                    (request_id, current_user.id, text))
+
+        # Если пишет эксперт впервые — переводим в работу
+        if current_user.is_expert() and expert_id is None:
+            cur.execute("""UPDATE "ЗапросЭксперту" SET id_эксперта=%s, статус='в_работе' WHERE id_запроса=%s""", (current_user.id, request_id))
+
+        cur.connection.commit()
+        return jsonify({'success': True})
+    finally:
+        cur.close()
+        conn.close()
+
+@app.route('/api/expert-request/<int:request_id>/close', methods=['POST'])
+@login_required
+def close_request(request_id: int):
+    """Закрыть запрос пользователем"""
+    conn = db.get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute("""SELECT id_пользователя, статус FROM "ЗапросЭксперту" WHERE id_запроса=%s""", (request_id,))
+        row = cur.fetchone()
+        if not row:
+            return jsonify({'error': 'Запрос не найден'}), 404
+        owner_id, status = row
+        if owner_id != current_user.id:
+            return jsonify({'error': 'Доступ запрещен'}), 403
+        if status in ('удален_модератором',):
+            return jsonify({'error': 'Запрос удален'}), 400
+        cur.execute("""UPDATE "ЗапросЭксперту" SET статус='закрыт', дата_закрытия=CURRENT_TIMESTAMP WHERE id_запроса=%s""", (request_id,))
+        cur.connection.commit()
+        return jsonify({'success': True})
+    finally:
+        cur.close()
+        conn.close()
+
+@app.route('/api/moderation/requests', methods=['GET'])
+@login_required
+def moderation_queue():
+    """Очередь модерации"""
+    if not (current_user.is_moderator() or current_user.is_admin()):
+        return jsonify({'error': 'Доступ запрещен'}), 403
+    from psycopg2.extras import RealDictCursor
+    conn = db.get_connection()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    try:
+        cur.execute("""
+            SELECT z.*, u.username, u.email
+            FROM "ЗапросЭксперту" z
+            LEFT JOIN "Пользователь" u ON u.id_пользователя = z.id_пользователя
+            WHERE z.статус = 'на_модерации'
+            ORDER BY z.дата_создания DESC
+        """)
+        items = [dict(r) for r in cur.fetchall()]
+        for it in items:
+            if it.get('дата_создания'):
+                it['дата_создания'] = it['дата_создания'].isoformat()
+        return jsonify({'success': True, 'requests': items})
+    finally:
+        cur.close()
+        conn.close()
+
+@app.route('/api/moderation/request/<int:request_id>/approve', methods=['POST'])
+@login_required
+def moderation_approve(request_id: int):
+    if not (current_user.is_moderator() or current_user.is_admin()):
+        return jsonify({'error': 'Доступ запрещен'}), 403
+    conn = db.get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            UPDATE "ЗапросЭксперту"
+            SET статус='ожидает', id_модератора=%s
+            WHERE id_запроса=%s AND статус='на_модерации'
+        """, (current_user.id, request_id))
+        if cur.rowcount == 0:
+            return jsonify({'error': 'Запрос не найден'}), 404
+        cur.execute("""
+            INSERT INTO "МодерацияЛог"(id_модератора, id_запроса, действие, детали)
+            VALUES (%s, %s, 'approve_request', '')
+        """, (current_user.id, request_id))
+        cur.connection.commit()
+        return jsonify({'success': True})
+    finally:
+        cur.close()
+        conn.close()
+
+@app.route('/api/moderation/request/<int:request_id>/delete', methods=['POST'])
+@login_required
+def moderation_delete_request(request_id: int):
+    if not (current_user.is_moderator() or current_user.is_admin()):
+        return jsonify({'error': 'Доступ запрещен'}), 403
+    data = request.json or {}
+    reason = (data.get('reason') or '').strip()
+    if not reason:
+        reason = 'Удалено модератором'
+    conn = db.get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute("""SELECT id_пользователя FROM "ЗапросЭксперту" WHERE id_запроса=%s""", (request_id,))
+        row = cur.fetchone()
+        if not row:
+            return jsonify({'error': 'Запрос не найден'}), 404
+        user_id = row[0]
+        cur.execute("""
+            UPDATE "ЗапросЭксперту"
+            SET статус='удален_модератором', id_модератора=%s, причина_удаления=%s
+            WHERE id_запроса=%s
+        """, (current_user.id, reason, request_id))
+        cur.execute("""
+            INSERT INTO "МодерацияЛог"(id_модератора, id_пользователя, id_запроса, действие, детали)
+            VALUES (%s, %s, %s, 'delete_request', %s)
+        """, (current_user.id, user_id, request_id, reason))
+        cur.connection.commit()
+        return jsonify({'success': True})
+    finally:
+        cur.close()
+        conn.close()
+
+@app.route('/api/moderation/user/<int:user_id>/set-role', methods=['POST'])
+@login_required
+def moderation_set_role(user_id: int):
+    # Менять роли может только админ
+    if not current_user.is_admin():
+        return jsonify({'error': 'Доступ запрещен'}), 403
+    data = request.json or {}
+    role = data.get('role')
+    if role not in ('пользователь', 'эксперт', 'модератор'):
+        return jsonify({'error': 'Неверная роль'}), 400
+    conn = db.get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute("""UPDATE "Пользователь" SET роль=%s WHERE id_пользователя=%s""", (role, user_id))
+        if cur.rowcount == 0:
+            return jsonify({'error': 'Пользователь не найден'}), 404
+        cur.execute("""
+            INSERT INTO "МодерацияЛог"(id_модератора, id_пользователя, действие, детали)
+            VALUES (%s, %s, 'set_role', %s)
+        """, (current_user.id, user_id, f'role={role}'))
+        cur.connection.commit()
+        return jsonify({'success': True})
+    finally:
+        cur.close()
+        conn.close()
+
+@app.route('/api/moderation/user/<int:user_id>/warn-block', methods=['POST'])
+@login_required
+def moderation_warn_block(user_id: int):
+    if not (current_user.is_moderator() or current_user.is_admin()):
+        return jsonify({'error': 'Доступ запрещен'}), 403
+    data = request.json or {}
+    warn = bool(data.get('warn', True))
+    minutes = int(data.get('block_minutes') or 0)
+    permanent = bool(data.get('permanent', False))
+    unblock = bool(data.get('unblock', False))
+    reason = (data.get('reason') or '').strip()
+    conn = db.get_connection()
+    cur = conn.cursor()
+    try:
+        if warn:
+            cur.execute("""UPDATE "Пользователь" SET warnings_count = warnings_count + 1 WHERE id_пользователя=%s""", (user_id,))
+
+        # Права: модератор только временно (minutes > 0), админ может временно/бессрочно/снять блокировку
+        if current_user.is_moderator():
+            permanent = False
+            unblock = False
+            if minutes <= 0:
+                return jsonify({'error': 'Модератор может блокировать только на время'}), 400
+
+        if unblock and current_user.is_admin():
+            cur.execute("""UPDATE "Пользователь" SET blocked_until = NULL, blocked_permanent = FALSE WHERE id_пользователя=%s""", (user_id,))
+        elif permanent and current_user.is_admin():
+            cur.execute("""UPDATE "Пользователь" SET blocked_permanent = TRUE, blocked_until = NULL WHERE id_пользователя=%s""", (user_id,))
+        elif minutes > 0:
+            cur.execute("""UPDATE "Пользователь" SET blocked_until = CURRENT_TIMESTAMP + (%s || ' minutes')::interval, blocked_permanent = FALSE WHERE id_пользователя=%s""", (minutes, user_id))
+        if cur.rowcount == 0:
+            return jsonify({'error': 'Пользователь не найден'}), 404
+        action = 'block_user' if (minutes > 0 or permanent or unblock) else 'warn_user'
+        cur.execute("""
+            INSERT INTO "МодерацияЛог"(id_модератора, id_пользователя, действие, детали)
+            VALUES (%s, %s, %s, %s)
+        """, (current_user.id, user_id, action, reason))
+        cur.connection.commit()
+        return jsonify({'success': True})
+    finally:
+        cur.close()
+        conn.close()
+
+@app.route('/api/insects', methods=['POST'])
+@login_required
+def add_insect_api():
+    """Добавление нового вида насекомого (эксперт/модератор)."""
+    if not (current_user.is_expert() or current_user.is_moderator()):
+        return jsonify({'error': 'Доступ запрещен'}), 403
+    data = request.json or {}
+    insect_type = data.get('type')
+    params = data.get('data') or {}
+    if insect_type not in ('dragonfly', 'beetle', 'butterfly'):
+        return jsonify({'error': 'Неверный тип'}), 400
+    try:
+        ok = db.add_insect(insect_type, params)
+        return jsonify({'success': True, 'result': ok})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -355,8 +865,8 @@ def get_expert_requests():
         cursor = conn.cursor(cursor_factory=RealDictCursor)
         
         try:
-            if current_user.is_admin():
-                # Админ видит все запросы
+            if current_user.is_expert() or current_user.is_moderator():
+                # Эксперт и модератор видят все запросы
                 cursor.execute("""
                     SELECT 
                         z.id_запроса,
@@ -424,7 +934,7 @@ def get_expert_requests():
 def get_insects_for_selection():
     """Получить список всех насекомых для выбора при ответе на запрос"""
     try:
-        if not current_user.is_admin():
+        if not (current_user.is_expert() or current_user.is_moderator()):
             return jsonify({'error': 'Доступ запрещен'}), 403
         
         all_insects = []
@@ -561,7 +1071,7 @@ def find_insect_id_in_vid_nasekomogo(insect_id: int, insect_type: str) -> Option
 def answer_expert_request(request_id):
     """Ответить на запрос эксперта"""
     try:
-        if not current_user.is_admin():
+        if not current_user.is_expert():
             return jsonify({'error': 'Доступ запрещен'}), 403
         
         data = request.json

@@ -1,97 +1,122 @@
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Регистрация - Определитель насекомых</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-    <style>
-        .auth-container {
-            max-width: 400px;
-            margin: 50px auto;
-            padding: 40px;
-            background: white;
-            border-radius: 20px;
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-        }
-        .auth-form input {
-            width: 100%;
-            padding: 12px;
-            margin-bottom: 20px;
-            border: 2px solid #ddd;
-            border-radius: 8px;
-            font-size: 1em;
-        }
-        .auth-form button {
-            width: 100%;
-            padding: 15px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            border: none;
-            border-radius: 12px;
-            font-size: 1.1em;
-            cursor: pointer;
-        }
-        .auth-form button:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
-        }
-        .auth-links {
-            text-align: center;
-            margin-top: 20px;
-        }
-        .auth-links a {
-            color: #667eea;
-            text-decoration: none;
-        }
-    </style>
-</head>
-<body>
-    <div class="auth-container">
-        <h1>Регистрация</h1>
-        <form class="auth-form" id="registerForm">
-            <input type="text" id="username" placeholder="Логин" required>
-            <input type="text" id="name" placeholder="Имя" required>
-            <input type="email" id="email" placeholder="Email" required>
-            <input type="password" id="password" placeholder="Пароль" required>
-            <button type="submit">Зарегистрироваться</button>
-        </form>
-        <div class="auth-links">
-            <p>Уже есть аккаунт? <a href="{{ url_for('login') }}">Войти</a></p>
-            <p><a href="{{ url_for('index') }}">На главную</a></p>
+{% extends "auth_layout.html" %}
+
+{% block title %}Регистрация{% endblock %}
+{% block subtitle %}Создание нового аккаунта{% endblock %}
+
+{% block content %}
+<div class="auth-form">
+    {% if errors.get('common') %}
+        <div class="auth-alert">{{ errors.common }}</div>
+    {% endif %}
+
+    <form method="post" data-validate="1" autocomplete="off" novalidate>
+        <div class="auth-form-row">
+            <div class="form-group {{ 'has-error' if errors.get('first_name') else '' }}">
+                <label for="first_name">Имя</label>
+                <input id="first_name" class="{{ 'field-invalid' if errors.get('first_name') else '' }}"
+                       name="first_name" value="{{ old.first_name }}" autocomplete="off" required>
+                <div class="field-error {{ 'visible' if errors.get('first_name') else '' }}">{{ errors.get('first_name', '') }}</div>
+            </div>
+            <div class="form-group {{ 'has-error' if errors.get('last_name') else '' }}">
+                <label for="last_name">Фамилия</label>
+                <input id="last_name" class="{{ 'field-invalid' if errors.get('last_name') else '' }}"
+                       name="last_name" value="{{ old.last_name }}" autocomplete="off" required>
+                <div class="field-error {{ 'visible' if errors.get('last_name') else '' }}">{{ errors.get('last_name', '') }}</div>
+            </div>
         </div>
-        <div id="error" style="color: red; margin-top: 10px; display: none;"></div>
-    </div>
 
-    <script>
-        document.getElementById('registerForm').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const username = document.getElementById('username').value;
-            const name = document.getElementById('name').value;
-            const email = document.getElementById('email').value;
-            const password = document.getElementById('password').value;
-            const errorDiv = document.getElementById('error');
+        <div class="form-group {{ 'has-error' if errors.get('email') else '' }}">
+            <label for="email">Email</label>
+            <input type="email" id="email" class="{{ 'field-invalid' if errors.get('email') else '' }}"
+                   name="email" value="{{ old.email }}" autocomplete="off" required>
+            <div class="field-error {{ 'visible' if errors.get('email') else '' }}">{{ errors.get('email', '') }}</div>
+        </div>
 
-            try {
-                const response = await fetch('/register', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ username, name, email, password })
-                });
+        <div class="form-group {{ 'has-error' if errors.get('login') else '' }}">
+            <label for="login">Логин</label>
+            <input id="login" class="{{ 'field-invalid' if errors.get('login') else '' }}"
+                   name="login" value="{{ old.login }}" autocomplete="off" required>
+            <div class="field-error {{ 'visible' if errors.get('login') else '' }}">{{ errors.get('login', '') }}</div>
+        </div>
 
-                const data = await response.json();
-                if (data.success) {
-                    window.location.href = '/';
-                } else {
-                    errorDiv.textContent = data.error || 'Ошибка регистрации';
-                    errorDiv.style.display = 'block';
-                }
-            } catch (error) {
-                errorDiv.textContent = 'Ошибка соединения';
-                errorDiv.style.display = 'block';
-            }
-        });
-    </script>
-</body>
-</html>
+        <div class="form-group {{ 'has-error' if errors.get('password') else '' }}">
+            <label for="password">Пароль</label>
+            <div class="password-field">
+                <input type="password" id="password"
+                       class="{{ 'field-invalid' if errors.get('password') else '' }}"
+                       name="password" autocomplete="new-password" required data-password="1"
+                       value="{{ old_passwords.password }}">
+                <button class="password-toggle" type="button" data-password-toggle="1" aria-label="Показать пароль">Показать</button>
+            </div>
+            <div class="field-error {{ 'visible' if errors.get('password') else '' }}">{{ errors.get('password', '') }}</div>
+            <div class="field-hint">8+ символов, обязательно: A-Z, a-z, 0-9, спецсимвол</div>
+        </div>
 
+        <div class="form-group {{ 'has-error' if errors.get('password_confirm') else '' }}">
+            <label for="password_confirm">Подтверждение пароля</label>
+            <div class="password-field">
+                <input type="password" id="password_confirm"
+                       class="{{ 'field-invalid' if errors.get('password_confirm') else '' }}"
+                       name="password_confirm" autocomplete="new-password" required data-password="1"
+                       value="{{ old_passwords.password_confirm }}">
+                <button class="password-toggle" type="button" data-password-toggle="1" aria-label="Показать пароль">Показать</button>
+            </div>
+            <div class="field-error {{ 'visible' if errors.get('password_confirm') else '' }}">{{ errors.get('password_confirm', '') }}</div>
+        </div>
+
+        <div class="form-group {{ 'has-error' if errors.get('age_status') else '' }}">
+            <label for="age_status">Мне 18 лет?</label>
+            <select id="age_status" class="{{ 'field-invalid' if errors.get('age_status') else '' }}" name="age_status" required>
+                <option value="18plus" {{ 'selected' if old.age_status == '18plus' else '' }}>Мне 18 лет</option>
+                <option value="under18" {{ 'selected' if old.age_status == 'under18' else '' }}>Нет 18 лет</option>
+            </select>
+            <div class="field-error {{ 'visible' if errors.get('age_status') else '' }}">{{ errors.get('age_status', '') }}</div>
+        </div>
+
+        <div class="form-group {{ 'has-error' if errors.get('gender') else '' }}">
+            <label>Пол</label>
+            <div class="auth-radio-group">
+                <label>
+                    <input type="radio" name="gender" value="male"
+                           {{ 'checked' if old.gender == 'male' else '' }} required>
+                    Мужской
+                </label>
+                <label>
+                    <input type="radio" name="gender" value="female"
+                           {{ 'checked' if old.gender == 'female' else '' }} required>
+                    Женский
+                </label>
+            </div>
+            <div class="field-error {{ 'visible' if errors.get('gender') else '' }}">{{ errors.get('gender', '') }}</div>
+        </div>
+
+        <div class="form-group {{ 'has-error' if errors.get('recaptcha') else '' }}">
+            <label>Проверка</label>
+            <div class="g-recaptcha" data-sitekey="{{ recaptcha_site_key }}"></div>
+            <div class="field-error {{ 'visible' if errors.get('recaptcha') else '' }}">{{ errors.get('recaptcha', '') }}</div>
+        </div>
+
+        <div class="form-group {{ 'has-error' if errors.get('rules') else '' }}">
+            <div class="auth-checkbox-group">
+                <label>
+                    <input type="checkbox" name="rules" value="1" autocomplete="off" required
+                           {{ 'checked' if old.rules else '' }}>
+                    Принимаю правила
+                </label>
+            </div>
+            <div class="field-error {{ 'visible' if errors.get('rules') else '' }}">{{ errors.get('rules', '') }}</div>
+        </div>
+
+        <button class="auth-submit auth-submit--register" type="submit">Зарегистрироваться</button>
+
+        <div class="auth-links">
+            Уже есть аккаунт? <a href="{{ url_for('login') }}">Войти</a>
+        </div>
+    </form>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/auth.js') }}"></script>
+<script src="https://www.google.com/recaptcha/api.js" async defer></script>
+{% endblock %}

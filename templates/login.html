@@ -1,93 +1,49 @@
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Вход - Определитель насекомых</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-    <style>
-        .auth-container {
-            max-width: 400px;
-            margin: 100px auto;
-            padding: 40px;
-            background: white;
-            border-radius: 20px;
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-        }
-        .auth-form input {
-            width: 100%;
-            padding: 12px;
-            margin-bottom: 20px;
-            border: 2px solid #ddd;
-            border-radius: 8px;
-            font-size: 1em;
-        }
-        .auth-form button {
-            width: 100%;
-            padding: 15px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            border: none;
-            border-radius: 12px;
-            font-size: 1.1em;
-            cursor: pointer;
-        }
-        .auth-form button:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
-        }
-        .auth-links {
-            text-align: center;
-            margin-top: 20px;
-        }
-        .auth-links a {
-            color: #667eea;
-            text-decoration: none;
-        }
-    </style>
-</head>
-<body>
-    <div class="auth-container">
-        <h1>Вход в систему</h1>
-        <form class="auth-form" id="loginForm">
-            <input type="text" id="username" placeholder="Логин" required>
-            <input type="password" id="password" placeholder="Пароль" required>
-            <button type="submit">Войти</button>
-        </form>
-        <div class="auth-links">
-            <p>Нет аккаунта? <a href="{{ url_for('register') }}">Зарегистрироваться</a></p>
-            <p><a href="{{ url_for('index') }}">На главную</a></p>
+{% extends "auth_layout.html" %}
+
+{% block title %}Авторизация{% endblock %}
+{% block subtitle %}Вход в систему{% endblock %}
+
+{% block content %}
+<div class="auth-form">
+    {% if errors.get('common') %}
+        <div class="auth-alert">{{ errors.common }}</div>
+    {% endif %}
+
+    <form method="post" data-validate="1" autocomplete="off" novalidate>
+        <div class="form-group {{ 'has-error' if errors.get('login') else '' }}">
+            <label for="login">Логин</label>
+            <input id="login" class="{{ 'field-invalid' if errors.get('login') else '' }}"
+                   name="login" value="{{ login }}" autocomplete="off" required>
+            <div class="field-error {{ 'visible' if errors.get('login') else '' }}">{{ errors.get('login', '') }}</div>
         </div>
-        <div id="error" style="color: red; margin-top: 10px; display: none;"></div>
-    </div>
 
-    <script>
-        document.getElementById('loginForm').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const username = document.getElementById('username').value;
-            const password = document.getElementById('password').value;
-            const errorDiv = document.getElementById('error');
+        <div class="form-group {{ 'has-error' if errors.get('password') else '' }}">
+            <label for="password">Пароль</label>
+            <div class="password-field">
+                <input type="password" id="password"
+                       class="{{ 'field-invalid' if errors.get('password') else '' }}"
+                       name="password" autocomplete="new-password" required data-password="1">
+                <button class="password-toggle" type="button" data-password-toggle="1" aria-label="Показать пароль">Показать</button>
+            </div>
+            <div class="field-error {{ 'visible' if errors.get('password') else '' }}">{{ errors.get('password', '') }}</div>
+        </div>
 
-            try {
-                const response = await fetch('/login', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ username, password })
-                });
+        <div class="form-group {{ 'has-error' if errors.get('recaptcha') else '' }}">
+            <label>Проверка</label>
+            <div class="g-recaptcha" data-sitekey="{{ recaptcha_site_key }}"></div>
+            <div class="field-error {{ 'visible' if errors.get('recaptcha') else '' }}">{{ errors.get('recaptcha', '') }}</div>
+        </div>
 
-                const data = await response.json();
-                if (data.success) {
-                    window.location.href = '/';
-                } else {
-                    errorDiv.textContent = data.error || 'Ошибка входа';
-                    errorDiv.style.display = 'block';
-                }
-            } catch (error) {
-                errorDiv.textContent = 'Ошибка соединения';
-                errorDiv.style.display = 'block';
-            }
-        });
-    </script>
-</body>
-</html>
+        <button class="auth-submit" type="submit">Войти</button>
 
+        <div class="auth-links">
+            Нет аккаунта? <a href="{{ url_for('register') }}">Зарегистрироваться</a>
+        </div>
+    </form>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/auth.js') }}"></script>
+<script src="https://www.google.com/recaptcha/api.js" async defer></script>
+{% endblock %}

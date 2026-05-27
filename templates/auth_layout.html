@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-store">
+    <title>{% block title %}{% endblock %} — Определитель насекомых</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="container auth-page">
+        <header>
+            <h1>Определитель насекомых</h1>
+            <p class="subtitle">{% block subtitle %}{% endblock %}</p>
+        </header>
+        <main>
+            {% block content %}{% endblock %}
+            <p class="auth-footer-link">
+                <a href="{{ url_for('index') }}">← На главную</a>
+            </p>
+        </main>
+    </div>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

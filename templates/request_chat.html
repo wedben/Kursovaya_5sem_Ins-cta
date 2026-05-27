@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Запрос к эксперту</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <style>
+        .chat-container {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .chat-card {
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            overflow: hidden;
+            border: 2px solid #e0e0e0;
+        }
+        .chat-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+        .chat-header .meta {
+            opacity: 0.95;
+            font-size: 0.95em;
+        }
+        .chat-body {
+            padding: 20px;
+            max-height: 520px;
+            overflow: auto;
+            background: #f8f9fa;
+        }
+        .msg {
+            display: flex;
+            margin-bottom: 12px;
+        }
+        .msg.me { justify-content: flex-end; }
+        .bubble {
+            max-width: 75%;
+            padding: 12px 14px;
+            border-radius: 12px;
+            border: 1px solid rgba(0,0,0,0.06);
+            background: white;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+            white-space: pre-wrap;
+            line-height: 1.4;
+        }
+        .msg.me .bubble {
+            background: #e9f0ff;
+            border-color: rgba(102,126,234,0.25);
+        }
+        .time {
+            margin-top: 6px;
+            font-size: 0.8em;
+            color: #666;
+        }
+        .chat-footer {
+            padding: 16px;
+            display: flex;
+            gap: 10px;
+            border-top: 1px solid #ececec;
+            align-items: center;
+            background: white;
+        }
+        .chat-input {
+            flex: 1;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 10px;
+            font-size: 1em;
+            font-family: inherit;
+        }
+        .chat-input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        .btn {
+            padding: 12px 18px;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            font-weight: 600;
+            color: white;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        .btn.secondary {
+            background: #6c757d;
+        }
+        .btn.danger {
+            background: #dc3545;
+        }
+        .btn:disabled {
+            opacity: 0.65;
+            cursor: not-allowed;
+        }
+        .status {
+            display: inline-block;
+            padding: 6px 12px;
+            background: rgba(255,255,255,0.2);
+            border: 1px solid rgba(255,255,255,0.25);
+            border-radius: 999px;
+            font-size: 0.85em;
+            font-weight: 600;
+        }
+    </style>
+</head>
+<body>
+{% raw %}
+<div id="app" class="chat-container">
+    <div class="chat-card">
+        <div class="chat-header">
+            <div>
+                <div style="font-size:1.2em; font-weight:700;">Запрос #{{ requestId }}</div>
+                <div class="meta" v-if="request">
+                    Статус: <span class="status">{{ request.статус }}</span>
+                </div>
+            </div>
+            <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                <button class="btn secondary" @click="goBack">Назад</button>
+                <button v-if="canClose" class="btn danger" @click="closeRequest" :disabled="closing">Ответ получен</button>
+            </div>
+        </div>
+
+        <div class="chat-body" ref="scrollBox">
+            <div v-if="loading" style="text-align:center; color:#666; padding:20px;">Загрузка...</div>
+            <div v-else>
+                <div v-for="m in messages" :key="m.id_сообщения" class="msg" :class="{ me: m.id_отправителя === currentUserId }">
+                    <div class="bubble">
+                        {{ m.текст }}
+                        <div class="time">{{ formatTime(m.дата_создания) }}</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="chat-footer">
+            <input class="chat-input" v-model="text" :disabled="sending || isClosed" placeholder="Введите сообщение">
+            <button class="btn" @click="send" :disabled="sending || !text.trim() || isClosed">Отправить</button>
+        </div>
+    </div>
+</div>
+{% endraw %}
+
+<script>
+const { createApp } = Vue;
+
+createApp({
+  data() {
+    return {
+      requestId: {{ request_id }},
+      request: null,
+      messages: [],
+      text: "",
+      sending: false,
+      loading: true,
+      closing: false,
+      currentUserId: null,
+      isModerator: false,
+      isExpert: false,
+    };
+  },
+  computed: {
+    isClosed() {
+      return this.request && (this.request.статус === 'закрыт' || this.request.статус === 'удален_модератором');
+    },
+    canClose() {
+      return this.request && this.request.id_пользователя === this.currentUserId && !this.isClosed;
+    }
+  },
+  methods: {
+    goBack() {
+      window.location.href = "/my-requests";
+    },
+    formatTime(iso) {
+      try {
+        const d = new Date(iso);
+        return d.toLocaleString();
+      } catch (_) {
+        return "";
+      }
+    },
+    async load() {
+      this.loading = true;
+      const res = await fetch(`/api/expert-request/${this.requestId}`);
+      const json = await res.json();
+      if (!json.success) {
+        alert(json.error || "Ошибка загрузки");
+        this.goBack();
+        return;
+      }
+      this.request = json.request;
+      this.messages = json.messages || [];
+      // current user id is not directly available; infer by fetching /api/expert-requests and matching owner, or rely on session user data on index.
+      // simplest: request includes owner id; if not expert/moderator then user is owner.
+      // We will set currentUserId using a lightweight endpoint: /api/whoami implemented later if needed.
+      // For now we set it from a hidden global if exists.
+      if (window.__currentUser && window.__currentUser.id) {
+        this.currentUserId = window.__currentUser.id;
+      } else {
+        // fallback: assume owner (works for user chat)
+        this.currentUserId = this.request.id_пользователя;
+      }
+      this.loading = false;
+      this.$nextTick(() => this.scrollToBottom());
+    },
+    scrollToBottom() {
+      const el = this.$refs.scrollBox;
+      if (el) el.scrollTop = el.scrollHeight;
+    },
+    async send() {
+      const t = this.text.trim();
+      if (!t) return;
+      this.sending = true;
+      try {
+        const res = await fetch(`/api/expert-request/${this.requestId}/message`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text: t })
+        });
+        const json = await res.json();
+        if (!json.success) {
+          alert(json.error || "Ошибка отправки");
+          return;
+        }
+        this.text = "";
+        await this.load();
+      } finally {
+        this.sending = false;
+      }
+    },
+    async closeRequest() {
+      if (!confirm("Закрыть запрос?")) return;
+      this.closing = true;
+      try {
+        const res = await fetch(`/api/expert-request/${this.requestId}/close`, { method: "POST" });
+        const json = await res.json();
+        if (!json.success) {
+          alert(json.error || "Ошибка");
+          return;
+        }
+        await this.load();
+      } finally {
+        this.closing = false;
+      }
+    }
+  },
+  mounted() {
+    // If request_chat is opened from index, user data may be available in session only.
+    this.load();
+  }
+}).mount("#app");
+</script>
+</body>
+</html>
+

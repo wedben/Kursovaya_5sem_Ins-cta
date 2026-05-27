@@ -34,9 +34,12 @@
             font-size: 0.9em;
             font-weight: 600;
         }
+        .status-на_модерации { background: #e2e3e5; color: #383d41; }
         .status-ожидает { background: #fff3cd; color: #856404; }
         .status-в_работе { background: #d1ecf1; color: #0c5460; }
         .status-отвечено { background: #d4edda; color: #155724; }
+        .status-закрыт { background: #e2e3e5; color: #383d41; }
+        .status-удален_модератором { background: #f8d7da; color: #721c24; }
         .status-отклонено { background: #f8d7da; color: #721c24; }
         .answer-section {
             margin-top: 20px;
@@ -61,7 +64,7 @@
         <header style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; border-radius: 20px; margin-bottom: 30px;">
             <div style="display: flex; justify-content: space-between; align-items: center;">
                 <div>
-                    <h1>📋 Мои запросы к эксперту</h1>
+                    <h1>Мои запросы к эксперту</h1>
                     <p>Просмотр ваших запросов и ответов эксперта</p>
                 </div>
                 <div>
@@ -83,8 +86,11 @@
                     <h2>Ваши запросы (<span v-text="requests.length"></span>)</h2>
                     <div style="display: flex; gap: 10px; margin-top: 10px;">
                         <button @click="filterStatus = ''" :class="{'active': filterStatus === ''}" style="padding: 8px 15px; border: 2px solid #ddd; border-radius: 8px; background: white; cursor: pointer;">Все</button>
+                        <button @click="filterStatus = 'на_модерации'" :class="{'active': filterStatus === 'на_модерации'}" style="padding: 8px 15px; border: 2px solid #ddd; border-radius: 8px; background: white; cursor: pointer;">На проверке</button>
                         <button @click="filterStatus = 'ожидает'" :class="{'active': filterStatus === 'ожидает'}" style="padding: 8px 15px; border: 2px solid #ddd; border-radius: 8px; background: white; cursor: pointer;">Ожидают</button>
-                        <button @click="filterStatus = 'отвечено'" :class="{'active': filterStatus === 'отвечено'}" style="padding: 8px 15px; border: 2px solid #ddd; border-radius: 8px; background: white; cursor: pointer;">Отвеченные</button>
+                        <button @click="filterStatus = 'в_работе'" :class="{'active': filterStatus === 'в_работе'}" style="padding: 8px 15px; border: 2px solid #ddd; border-radius: 8px; background: white; cursor: pointer;">В работе</button>
+                        <button @click="filterStatus = 'отвечено'" :class="{'active': filterStatus === 'отвечено'}" style="padding: 8px 15px; border: 2px solid #ddd; border-radius: 8px; background: white; cursor: pointer;">С ответом</button>
+                        <button @click="filterStatus = 'закрыт'" :class="{'active': filterStatus === 'закрыт'}" style="padding: 8px 15px; border: 2px solid #ddd; border-radius: 8px; background: white; cursor: pointer;">Закрытые</button>
                     </div>
                 </div>
 
@@ -123,7 +129,6 @@
                     <!-- Ответ эксперта -->
                     <div v-if="request.ответ_эксперта" class="answer-section">
                         <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 15px;">
-                            <span style="font-size: 1.5em;">✅</span>
                             <h3 style="margin: 0; color: #155724;">Ответ эксперта</h3>
                         </div>
                         <p style="margin-bottom: 15px; line-height: 1.6;">
@@ -145,11 +150,23 @@
 
                     <div v-else class="no-answer">
                         <p style="margin: 0;">
-                            <strong>⏳ Ожидание ответа эксперта</strong>
+                            <strong>Ожидание ответа</strong>
                         </p>
                         <p style="margin: 5px 0 0 0; font-size: 0.9em;">
                             Эксперт рассмотрит ваш запрос и ответит в ближайшее время
                         </p>
+                    </div>
+
+                    <div style="margin-top: 15px; display: flex; gap: 10px; flex-wrap: wrap;">
+                        <button @click="openChat(request.id_запроса)"
+                                style="padding: 10px 18px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 8px; cursor: pointer;">
+                            Открыть чат
+                        </button>
+                        <button v-if="request.статус !== 'закрыт' && request.статус !== 'удален_модератором'"
+                                @click="closeRequest(request.id_запроса)"
+                                style="padding: 10px 18px; background: #dc3545; color: white; border: none; border-radius: 8px; cursor: pointer;">
+                            Ответ получен
+                        </button>
                     </div>
                 </div>
 
@@ -224,6 +241,23 @@
                     if (!dateString) return '';
                     const date = new Date(dateString);
                     return date.toLocaleString('ru-RU');
+                },
+                openChat(id) {
+                    window.location.href = `/request/${id}`;
+                },
+                async closeRequest(id) {
+                    if (!confirm('Закрыть запрос?')) return;
+                    try {
+                        const res = await fetch(`/api/expert-request/${id}/close`, { method: 'POST' });
+                        const json = await res.json();
+                        if (!json.success) {
+                            alert(json.error || 'Ошибка');
+                            return;
+                        }
+                        await this.loadRequests();
+                    } catch (e) {
+                        alert('Ошибка');
+                    }
                 }
             },
             mounted() {

@@ -19,7 +19,7 @@ BEGIN
         SELECT 1 FROM information_schema.columns 
         WHERE table_name = 'Пользователь' AND column_name = 'роль'
     ) THEN
-        ALTER TABLE "Пользователь" ADD COLUMN роль VARCHAR(50) DEFAULT 'пользователь' CHECK (роль IN ('пользователь', 'админ', 'эксперт'));
+        ALTER TABLE "Пользователь" ADD COLUMN роль VARCHAR(50) DEFAULT 'пользователь' CHECK (роль IN ('пользователь', 'эксперт', 'модератор'));
     END IF;
 END $$;
 
@@ -64,9 +64,48 @@ CREATE INDEX IF NOT EXISTS idx_запрос_дата ON "ЗапросЭкспе�
 CREATE INDEX IF NOT EXISTS idx_пользователь_username ON "Пользователь"(username);
 CREATE INDEX IF NOT EXISTS idx_пользователь_email ON "Пользователь"(email);
 
--- Создаем первого админа (пароль: admin123, нужно будет захешировать)
--- Пароль будет хешироваться в приложении
-INSERT INTO "Пользователь" (имя, email, username, пароль, роль) 
-VALUES ('Администратор', 'admin@insects.ru', 'admin', 'admin123', 'админ')
-ON CONFLICT (username) DO NOTHING;
+-- Профиль пользователя (как в web_back_lab_1)
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'Пользователь' AND column_name = 'фамилия'
+    ) THEN
+        ALTER TABLE "Пользователь" ADD COLUMN фамилия VARCHAR(31);
+    END IF;
+END $$;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'Пользователь' AND column_name = 'пол'
+    ) THEN
+        ALTER TABLE "Пользователь" ADD COLUMN пол VARCHAR(10) CHECK (пол IN ('male', 'female'));
+    END IF;
+END $$;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'Пользователь' AND column_name = 'возраст'
+    ) THEN
+        ALTER TABLE "Пользователь" ADD COLUMN возраст VARCHAR(10) CHECK (возраст IN ('18plus', 'under18'));
+    END IF;
+END $$;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'Пользователь' AND column_name = 'тема'
+    ) THEN
+        ALTER TABLE "Пользователь" ADD COLUMN тема VARCHAR(10) DEFAULT 'light' CHECK (тема IN ('light', 'dark'));
+    END IF;
+END $$;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_пользователь_email_lower ON "Пользователь"(LOWER(email));
+
+-- Примечание: роль 'админ' удалена. Для начальной настройки используйте модератора или эксперта.
 

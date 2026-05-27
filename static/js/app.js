@@ -4,7 +4,7 @@ createApp({
     data() {
         return {
             currentUser: null,
-            showExpertRequestForm: false,
+            showExpertRequestModal: false,
             expertRequest: {
                 description: '',
                 location: '',
@@ -46,7 +46,7 @@ createApp({
                 timeOfDay: ''
             },
             insectTypes: [
-                { value: 'dragonfly', label: 'Стрекоза', icon: '🪰', image: '/static/images/dragon.png' },
+                { value: 'dragonfly', label: 'Стрекоза', icon: '', image: '/static/images/dragon.png' },
                 { value: 'beetle', label: 'Жук', icon: '🪲' },
                 { value: 'butterfly', label: 'Бабочка', icon: '🦋' }
             ],
@@ -57,18 +57,18 @@ createApp({
             },
             commonColors: ['синий', 'красный', 'зеленый', 'желтый', 'черный', 'коричневый', 'оранжевый', 'белый', 'фиолетовый', 'розовый'],
             commonHabitats: [
-                { value: 'лес', label: 'Лес', icon: '🌲' },
-                { value: 'луг', label: 'Луг', icon: '🌾' },
-                { value: 'водоем', label: 'Водоем', icon: '💧' },
-                { value: 'сад', label: 'Сад', icon: '🌷' },
-                { value: 'поле', label: 'Поле', icon: '🌾' },
-                { value: 'болото', label: 'Болото', icon: '🪷' }
+                { value: 'лес', label: 'Лес', icon: '' },
+                { value: 'луг', label: 'Луг', icon: '' },
+                { value: 'водоем', label: 'Водоем', icon: '' },
+                { value: 'сад', label: 'Сад', icon: '' },
+                { value: 'поле', label: 'Поле', icon: '' },
+                { value: 'болото', label: 'Болото', icon: '' }
             ],
             seasons: [
-                { value: 'весна', label: 'Весна', icon: '🌸' },
-                { value: 'лето', label: 'Лето', icon: '☀️' },
-                { value: 'осень', label: 'Осень', icon: '🍂' },
-                { value: 'зима', label: 'Зима', icon: '❄️' }
+                { value: 'весна', label: 'Весна', icon: '' },
+                { value: 'лето', label: 'Лето', icon: '' },
+                { value: 'осень', label: 'Осень', icon: '' },
+                { value: 'зима', label: 'Зима', icon: '' }
             ],
             filterOptions: {
                 // Общие
@@ -95,6 +95,14 @@ createApp({
         };
     },
     methods: {
+        openExpertRequestModal() {
+            this.expertRequestError = '';
+            this.expertRequestSuccess = '';
+            this.showExpertRequestModal = true;
+        },
+        closeExpertRequestModal() {
+            this.showExpertRequestModal = false;
+        },
         async selectType(type) {
             this.selectedType = type;
             this.results = [];
@@ -485,12 +493,7 @@ createApp({
         },
         
         getTypeIcon(type) {
-            const icons = {
-                'dragonfly': '/static/images/dragon.png',
-                'beetle': '🪲',
-                'butterfly': '🦋'
-            };
-            return icons[type] || '🐛';
+            return '';
         },
         
         isImageIcon(icon) {
@@ -522,14 +525,7 @@ createApp({
         },
         
         getGenderIcon(gender) {
-            if (!gender) return '';
-            if (gender.includes('самец') && !gender.includes('самка')) {
-                return '♂️';
-            }
-            if (gender.includes('самка') && !gender.includes('самец')) {
-                return '♀️';
-            }
-            return '⚥';
+            return '';
         },
         
         cleanDescription(description) {
@@ -562,12 +558,12 @@ createApp({
                 
                 const data = await response.json();
                 if (data.success) {
-                    this.expertRequestSuccess = 'Запрос успешно отправлен эксперту!';
+                    this.expertRequestSuccess = 'Запрос отправлен на проверку';
                     this.resetExpertRequest();
                     setTimeout(() => {
-                        this.showExpertRequestForm = false;
+                        this.showExpertRequestModal = false;
                         this.expertRequestSuccess = '';
-                    }, 2000);
+                    }, 1200);
                 } else {
                     this.expertRequestError = data.error || 'Ошибка при отправке запроса';
                 }
