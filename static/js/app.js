@@ -127,9 +127,25 @@ createApp({
         searchButtonLabel() {
             return this.loading ? 'Поиск...' : 'Найти';
         },
+        canCreateExpertRequest() {
+            return this.currentUser && this.currentUser.role === 'пользователь';
+        },
+        userRoleLabel() {
+            if (!this.currentUser) return '';
+            const labels = {
+                'пользователь': 'Пользователь',
+                'эксперт': 'Эксперт',
+                'модератор': 'Модератор',
+                'админ': 'Админ',
+            };
+            return labels[this.currentUser.role] || this.currentUser.role;
+        },
     },
     methods: {
         openExpertRequestModal() {
+            if (!this.canCreateExpertRequest) {
+                return;
+            }
             this.expertRequestError = '';
             this.expertRequestSuccess = '';
             this.showExpertRequestModal = true;
@@ -702,6 +718,10 @@ createApp({
         },
         
         async submitExpertRequest() {
+            if (!this.canCreateExpertRequest) {
+                this.expertRequestError = 'Создавать запросы эксперту могут только обычные пользователи';
+                return;
+            }
             if (!this.expertRequest.description.trim()) {
                 this.expertRequestError = 'Описание насекомого обязательно';
                 return;
@@ -760,6 +780,14 @@ createApp({
             } catch (error) {
                 console.error('Ошибка выхода:', error);
             }
+        },
+
+        initNotifications() {
+            this.$nextTick(() => {
+                if (window.UserNotifications && document.querySelector('#notifications-mount')) {
+                    UserNotifications.init({ mount: '#notifications-mount' });
+                }
+            });
         },
         
         handleImageError(event) {
@@ -847,6 +875,7 @@ createApp({
                 this.currentUser = null;
             }
         }
+        this.initNotifications();
         const deepLinkEl = document.getElementById('catalog-deep-link');
         if (deepLinkEl) {
             try {

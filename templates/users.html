@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Пользователи - Определитель насекомых</title>
+    <title>Управление пользователями — Определитель насекомых</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
     <style>
@@ -64,22 +64,26 @@
     </style>
 </head>
 <body>
+<div class="page">
+{% include '_moderator_subnav.html' %}
 {% raw %}
-<div id="app" class="page">
+<div id="app">
     <div class="topbar">
         <div>
-            <div style="font-size: 1.6em; font-weight: 800;">Пользователи</div>
-            <div class="muted" style="color: rgba(255,255,255,0.9);">Всего: {{ users.length }}</div>
+            <div style="font-size: 1.6em; font-weight: 800;">Управление пользователями</div>
+            <div class="muted" style="color: rgba(255,255,255,0.9);">Предупреждения, блокировки и роли</div>
         </div>
         <div style="display:flex; gap:10px; flex-wrap:wrap;">
             <a class="btn secondary" href="/">На главную</a>
-            <a class="btn secondary" href="/moderation">Модерация</a>
         </div>
     </div>
 
-    <div class="card" style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+    <div class="card" style="display:flex; gap:10px; flex-wrap:wrap; align-items:center; justify-content:space-between;">
+        <div class="muted">Всего пользователей: <strong>{{ users.length }}</strong></div>
+        <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center; flex:1;">
         <input v-model="q" placeholder="Поиск по username/email/имени" style="flex:1; min-width:260px;">
         <button class="btn secondary" @click="load">Обновить</button>
+        </div>
     </div>
 
     <div v-if="loading" class="card">Загрузка...</div>
@@ -190,12 +194,14 @@ createApp({
       }
     },
     async warn(u) {
+      const reason = prompt('Причина предупреждения:', 'Нарушение правил пользования сервисом');
+      if (reason === null) return;
       this.savingId = u.id_пользователя;
       try {
         const res = await fetch(`/api/moderation/user/${u.id_пользователя}/warn-block`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ warn: true, block_minutes: 0, reason: 'Предупреждение модератора' })
+          body: JSON.stringify({ warn: true, block_minutes: 0, reason: reason.trim() || 'Предупреждение модератора' })
         });
         const json = await res.json();
         if (!json.success) alert(json.error || 'Ошибка');
@@ -256,6 +262,7 @@ createApp({
   async mounted() { await this.loadMe(); await this.load(); }
 }).mount('#app');
 </script>
+</div>
 </body>
 </html>
 

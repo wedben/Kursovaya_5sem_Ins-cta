@@ -17,24 +17,34 @@
     {% raw %}
     <div id="app">
     <div class="container">
-        <header>
-            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap;">
-                <div>
+        <header class="site-header">
+            <div class="site-header__inner">
+                <div class="site-header__brand">
                     <h1>Определитель насекомых</h1>
                     <p class="subtitle">Каталог насекомых, грибов и трав Костромской области</p>
                 </div>
-                <div style="display: flex; gap: 10px; align-items: center;">
-                    <span v-if="currentUser" style="color: white; margin-right: 10px;">
-                        {{ currentUser.name }}
-                    </span>
-                    <a v-if="!currentUser" href="/login" style="color: white; text-decoration: none; padding: 8px 15px; background: rgba(255,255,255,0.2); border-radius: 8px;">Войти</a>
-                    <a v-if="!currentUser" href="/register" style="color: white; text-decoration: none; padding: 8px 15px; background: rgba(255,255,255,0.2); border-radius: 8px;">Регистрация</a>
-                    <a v-if="currentUser" href="/my-requests" style="color: white; text-decoration: none; padding: 8px 15px; background: rgba(255,255,255,0.2); border-radius: 8px;">Мои запросы</a>
-                    <a v-if="currentUser && currentUser.role === 'эксперт'" href="/admin" style="color: white; text-decoration: none; padding: 8px 15px; background: rgba(255,255,255,0.2); border-radius: 8px;">Запросы пользователей</a>
-                    <a v-if="currentUser && currentUser.role === 'админ'" href="/admin" style="color: white; text-decoration: none; padding: 8px 15px; background: rgba(255,255,255,0.2); border-radius: 8px;">Админ-панель</a>
-                    <a v-if="currentUser && (currentUser.role === 'модератор' || currentUser.role === 'админ')" href="/moderation" style="color: white; text-decoration: none; padding: 8px 15px; background: rgba(255,255,255,0.2); border-radius: 8px;">Модерация запросов</a>
-                    <a v-if="currentUser && currentUser.role === 'админ'" href="/users" style="color: white; text-decoration: none; padding: 8px 15px; background: rgba(255,255,255,0.2); border-radius: 8px;">Пользователи</a>
-                    <button v-if="currentUser" @click="logout" style="color: white; padding: 8px 15px; background: rgba(255,255,255,0.2); border: none; border-radius: 8px; cursor: pointer;">Выход</button>
+                <div class="site-header__aside">
+                    <template v-if="!currentUser">
+                        <div class="site-header__actions">
+                            <a href="/login" class="site-header__btn">Войти</a>
+                            <a href="/register" class="site-header__btn">Регистрация</a>
+                        </div>
+                    </template>
+                    <template v-else>
+                        <div class="site-header__profile">
+                            <span class="site-header__username">{{ currentUser.name }}</span>
+                            <span class="site-header__role">{{ userRoleLabel }}</span>
+                        </div>
+                        <div class="site-header__actions">
+                            <a v-if="canCreateExpertRequest" href="/my-requests" class="site-header__btn">Мои запросы</a>
+                            <a v-if="currentUser.role === 'эксперт'" href="/admin" class="site-header__btn">Запросы пользователей</a>
+                            <a v-if="currentUser.role === 'модератор' || currentUser.role === 'админ'" href="/moderation" class="site-header__btn">Модерация запросов</a>
+                            <a v-if="currentUser.role === 'модератор' || currentUser.role === 'админ'" href="/users" class="site-header__btn">Управление пользователями</a>
+                            <a v-if="currentUser.role === 'админ'" href="/admin" class="site-header__btn">Админ-панель</a>
+                            <div v-if="canCreateExpertRequest" class="site-header__notif-slot" id="notifications-mount"></div>
+                            <button type="button" class="site-header__btn site-header__btn--logout" @click="logout">Выход</button>
+                        </div>
+                    </template>
                 </div>
             </div>
         </header>
@@ -44,7 +54,7 @@
                     <button @click="showAllInsects" class="view-all-btn">
                         Просмотреть весь каталог
                     </button>
-                    <button v-if="currentUser" @click="openExpertRequestModal" class="view-all-btn" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);">
+                    <button v-if="canCreateExpertRequest" @click="openExpertRequestModal" class="view-all-btn" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);">
                         Задать вопрос эксперту
                     </button>
                 </div>
@@ -827,6 +837,8 @@
     </div>
     {% endraw %}
 
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+    <script src="{{ url_for('static', filename='js/user_notifications.js') }}"></script>
     <script src="{{ url_for('static', filename='js/app.js') }}"></script>
 </body>
 </html>

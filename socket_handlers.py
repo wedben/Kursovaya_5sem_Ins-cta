@@ -24,6 +24,7 @@ def register_handlers():
     def on_connect():
         if not current_user.is_authenticated:
             return False
+        join_room(f'user_{current_user.id}')
         emit('connected', {'user_id': current_user.id, 'username': current_user.username})
 
     @socketio.on('join_request')
@@ -198,6 +199,14 @@ def register_handlers():
                 'last_message': text[:80],
                 'status': 'открыт',
             }, broadcast=True)
+
+            if current_user.is_expert() and owner_id != current_user.id:
+                preview = text.strip()
+                if len(preview) > 200:
+                    preview = preview[:197] + '...'
+                import notifications as user_notifications
+                user_notifications.notify_expert_response(owner_id, request_id, preview)
+
             return {'ok': True}
         except Exception as e:
             conn.rollback()

@@ -50,6 +50,9 @@
             margin-top: 12px; padding: 14px; background: #fff; border: 2px solid #667eea; border-radius: 10px;
         }
         .status-удален_модератором { background: #f8d7da; color: #721c24; }
+        .request-card.highlight {
+            box-shadow: 0 0 0 3px #667eea;
+        }
         .status-отклонено { background: #f8d7da; color: #721c24; }
         .answer-section {
             margin-top: 20px;
@@ -79,6 +82,7 @@
                 </div>
                 <div>
                     <a href="/" style="color: white; text-decoration: none; padding: 10px 20px; background: rgba(255,255,255,0.2); border-radius: 8px; margin-right: 10px;">На главную</a>
+                    <div id="notifications-mount" style="display:inline-block; vertical-align:middle; margin-right:10px;"></div>
                     <button onclick="logout()" style="padding: 10px 20px; background: rgba(255,255,255,0.2); color: white; border: none; border-radius: 8px; cursor: pointer;">Выход</button>
                 </div>
             </div>
@@ -102,7 +106,7 @@
                     </div>
                 </div>
 
-                <div v-for="request in filteredRequests" :key="request.id_запроса" class="request-card">
+                <div v-for="request in filteredRequests" :key="request.id_запроса" class="request-card" :id="'request-' + request.id_запроса">
                     <div class="request-header">
                         <div>
                             <h3>Запрос #<span v-text="request.id_запроса"></span></h3>
@@ -132,6 +136,11 @@
 
                     <div v-if="request.дополнительные_данные" style="margin-bottom: 10px;">
                         <strong>Дополнительно:</strong> <span v-text="request.дополнительные_данные"></span>
+                    </div>
+
+                    <div v-if="request.статус === 'удален_модератором'" class="rejection-box">
+                        <strong>Запрос отклонён модератором</strong>
+                        <p style="margin:8px 0 0;" v-text="request.причина_удаления || 'Причина не указана'"></p>
                     </div>
 
                     <div v-if="request.attached_card" class="catalog-card">
@@ -233,7 +242,22 @@
                     return this.requests.filter(r => r.статус === this.filterStatus);
                 }
             },
+            mounted() {
+                this.loadRequests().then(() => this.scrollToHashRequest());
+            },
             methods: {
+                scrollToHashRequest() {
+                    const hash = window.location.hash;
+                    if (!hash || !hash.startsWith('#request-')) return;
+                    this.$nextTick(() => {
+                        const el = document.querySelector(hash);
+                        if (el) {
+                            el.classList.add('highlight');
+                            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                            setTimeout(() => el.classList.remove('highlight'), 3000);
+                        }
+                    });
+                },
                 isOpenStatus(s) {
                     return ['открыт', 'ожидает', 'в_работе', 'отвечено'].includes(s);
                 },
@@ -314,9 +338,6 @@
                         alert('Ошибка');
                     }
                 }
-            },
-            mounted() {
-                this.loadRequests();
             }
         }).mount('#app');
 
@@ -333,6 +354,15 @@
                 console.error('Ошибка выхода:', error);
             }
         }
+    </script>
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+    <script src="{{ url_for('static', filename='js/user_notifications.js') }}"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            if (window.UserNotifications) {
+                UserNotifications.init({ mount: '#notifications-mount' });
+            }
+        });
     </script>
 </body>
 </html>

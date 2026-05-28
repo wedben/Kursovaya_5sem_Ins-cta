@@ -63,8 +63,10 @@
     </style>
 </head>
 <body>
+<div class="page">
+{% include '_moderator_subnav.html' %}
 {% raw %}
-<div id="app" class="page">
+<div id="app">
     <div class="topbar">
         <div>
             <div style="font-size: 1.6em; font-weight: 800;">Модерация запросов</div>
@@ -72,7 +74,6 @@
         </div>
         <div style="display:flex; gap:10px; flex-wrap:wrap;">
             <a class="btn secondary" href="/">На главную</a>
-            <a class="btn secondary" href="/users">Пользователи</a>
             <button type="button" class="btn secondary" @click="load({ silent: true })" :disabled="loading || refreshing">
                 {{ refreshing ? 'Обновление…' : 'Обновить' }}
             </button>
@@ -92,6 +93,7 @@
                 </div>
                 <div style="display:flex; gap:10px; flex-wrap:wrap;">
                     <button class="btn" @click="approve(r.id_запроса)" :disabled="actionId===r.id_запроса">Одобрить</button>
+                    <button class="btn secondary" @click="openWarn(r)" :disabled="actionId===r.id_запроса">Предупредить</button>
                     <button class="btn danger" @click="openDelete(r)" :disabled="actionId===r.id_запроса">Удалить</button>
                 </div>
             </div>
@@ -118,6 +120,15 @@
                     <button class="btn danger" @click="confirmDelete" :disabled="!deleteReason.trim() || actionId===r.id_запроса">Подтвердить удаление</button>
                 </div>
             </div>
+
+            <div v-if="warnTarget && warnTarget.id_запроса===r.id_запроса" style="margin-top:14px; border-top:1px solid #eee; padding-top:14px;">
+                <div style="font-weight:700; margin-bottom:8px;">Причина предупреждения</div>
+                <textarea v-model="warnReason" placeholder="Укажите, за что выдано предупреждение по этому запросу"></textarea>
+                <div style="display:flex; gap:10px; margin-top:10px; justify-content:flex-end; flex-wrap:wrap;">
+                    <button class="btn secondary" @click="cancelWarn">Отмена</button>
+                    <button class="btn" @click="confirmWarn" :disabled="!warnReason.trim() || actionId===r.id_запроса">Отправить предупреждение</button>
+                </div>
+            </div>
         </div>
     </div>
 </div>
@@ -135,6 +146,8 @@ createApp({
       actionId: null,
       deleteTarget: null,
       deleteReason: "",
+      warnTarget: null,
+      warnReason: "",
       refreshing: false
     };
   },
@@ -181,12 +194,50 @@ createApp({
       }
     },
     openDelete(r) {
+      this.warnTarget = null;
+      this.warnReason = "";
       this.deleteTarget = r;
       this.deleteReason = "";
     },
     cancelDelete() {
       this.deleteTarget = null;
       this.deleteReason = "";
+    },
+    openWarn(r) {
+      this.deleteTarget = null;
+      this.deleteReason = "";
+      this.warnTarget = r;
+      this.warnReason = "";
+    },
+    cancelWarn() {
+      this.warnTarget = null;
+      this.warnReason = "";
+    },
+    async confirmWarn() {
+      const r = this.warnTarget;
+      if (!r) return;
+      this.actionId = r.id_запроса;
+      try {
+        const res = await fetch(`/api/moderation/user/${r.id_пользователя}/warn-block`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            warn: true,
+            block_minutes: 0,
+            request_id: r.id_запроса,
+            reason: this.warnReason.trim()
+          })
+        });
+        const json = await res.json();
+        if (!json.success) {
+          alert(json.error || 'Ошибка');
+          return;
+        }
+        this.cancelWarn();
+        alert('Предупреждение отправлено пользователю');
+      } finally {
+        this.actionId = null;
+      }
     },
     async confirmDelete() {
       const id = this.deleteTarget.id_запроса;
@@ -214,6 +265,7 @@ createApp({
   }
 }).mount('#app');
 </script>
+</div>
 </body>
 </html>
 

@@ -8,6 +8,7 @@ from validators import (
     v_password, v_gender, v_age_status, v_rules_checked,
 )
 from recaptcha import recaptcha_enabled, recaptcha_site_key, recaptcha_verify
+import notifications as user_notifications
 import os
 import re
 from pathlib import Path
@@ -579,20 +580,22 @@ def moderation_panel():
     """Панель модерации (очередь запросов)"""
     if not (current_user.is_moderator() or current_user.is_admin()):
         return jsonify({'error': 'Доступ запрещен'}), 403
-    return render_template('moderation.html')
+    return render_template('moderation.html', active_mod_section='requests')
 
 @app.route('/users')
 @login_required
 def users_panel():
-    """Управление пользователями (для модератора)"""
+    """Управление пользователями (для модератора и админа)"""
     if not (current_user.is_moderator() or current_user.is_admin()):
         return jsonify({'error': 'Доступ запрещен'}), 403
-    return render_template('users.html')
+    return render_template('users.html', active_mod_section='users')
 
 @app.route('/my-requests')
 @login_required
 def my_requests():
     """Страница с запросами пользователя"""
+    if not current_user.can_create_expert_request():
+        return redirect(url_for('index'))
     user_data = {
         'id': current_user.id,
         'username': current_user.username,
@@ -614,6 +617,32 @@ def whoami():
             'role': current_user.role
         }
     })
+
+@app.route('/api/notifications', methods=['GET'])
+@login_required
+def get_notifications_api():
+    items = user_notifications.get_notifications(current_user.id)
+    unread = user_notifications.count_unread(current_user.id)
+    return jsonify({'success': True, 'notifications': items, 'unread_count': unread})
+
+
+@app.route('/api/notifications/<int:notification_id>/read', methods=['POST'])
+@login_required
+def read_notification_api(notification_id: int):
+    ok = user_notifications.mark_read(notification_id, current_user.id)
+    if not ok:
+        return jsonify({'error': 'Уведомление не найдено'}), 404
+    return jsonify({
+        'success': True,
+        'unread_count': user_notifications.count_unread(current_user.id),
+    })
+
+
+@app.route('/api/notifications/read-all', methods=['POST'])
+@login_required
+def read_all_notifications_api():
+    user_notifications.mark_all_read(current_user.id)
+    return jsonify({'success': True, 'unread_count': 0})
 
 @app.route('/api/users', methods=['GET'])
 @login_required
@@ -733,6 +762,9 @@ def get_filter_options(insect_type):
 def create_expert_request():
     """Создать запрос к эксперту"""
     try:
+        if not current_user.can_create_expert_request():
+            return jsonify({'error': 'Создавать запросы эксперту могут только обычные пользователи'}), 403
+
         data = request.json
         description = data.get('description')
         location = data.get('location', '')
@@ -979,6 +1011,7 @@ def moderation_delete_request(request_id: int):
             INSERT INTO "МодерацияЛог"(id_модератора, id_пользователя, id_запроса, действие, детали)
             VALUES (%s, %s, %s, 'delete_request', %s)
         """, (current_user.id, user_id, request_id, reason))
+        user_notifications.notify_request_rejected(user_id, request_id, reason, conn=conn)
         cur.connection.commit()
         return jsonify({'success': True})
     finally:
@@ -1022,17 +1055,23 @@ def moderation_warn_block(user_id: int):
     permanent = bool(data.get('permanent', False))
     unblock = bool(data.get('unblock', False))
     reason = (data.get('reason') or '').strip()
+    request_id = data.get('request_id')
+    try:
+        request_id = int(request_id) if request_id is not None else None
+    except (TypeError, ValueError):
+        request_id = None
     conn = db.get_connection()
     cur = conn.cursor()
     try:
         if warn:
             cur.execute("""UPDATE "Пользователь" SET warnings_count = warnings_count + 1 WHERE id_пользователя=%s""", (user_id,))
+            user_notifications.notify_moderator_warning(user_id, request_id, reason, conn=conn)
 
         # Права: модератор только временно (minutes > 0), админ может временно/бессрочно/снять блокировку
         if current_user.is_moderator():
             permanent = False
             unblock = False
-            if minutes <= 0:
+            if not warn and minutes <= 0:
                 return jsonify({'error': 'Модератор может блокировать только на время'}), 400
 
         if unblock and current_user.is_admin():
@@ -1098,6 +1137,7 @@ def get_expert_requests():
                         z.id_вида_насекомого,
                         z.id_карточки,
                         z.тип_карточки,
+                        z.причина_удаления,
                         u.имя as имя_пользователя,
                         u.email as email_пользователя
                     FROM "ЗапросЭксперту" z
@@ -1121,6 +1161,7 @@ def get_expert_requests():
                         z.id_вида_насекомого,
                         z.id_карточки,
                         z.тип_карточки,
+                        z.причина_удаления,
                         u.имя as имя_пользователя,
                         u.email as email_пользователя
                     FROM "ЗапросЭксперту" z
@@ -1273,7 +1314,7 @@ def attach_card_to_request(request_id: int):
         row = cur.fetchone()
         if not row:
             return jsonify({'error': 'Запрос не найден'}), 404
-        _, status, prev_card_id = row
+        owner_id, status, prev_card_id = row
         if status in ('закрыт', 'удален_модератором', 'на_модерации'):
             return jsonify({'error': 'Нельзя прикрепить карточку к этому запросу'}), 400
 
@@ -1297,6 +1338,12 @@ def attach_card_to_request(request_id: int):
             (request_id, current_user.id, msg_text),
         )
         conn.commit()
+
+        user_notifications.notify_expert_response(
+            owner_id,
+            request_id,
+            f'Эксперт прикрепил карточку вида: {card_title}.',
+        )
 
         payload = {'request_id': request_id, 'attached_card': card, 'статус': 'открыт'}
         try:
@@ -1399,6 +1446,15 @@ def answer_expert_request(request_id):
         conn = db.get_connection()
         cursor = conn.cursor()
         
+        cursor.execute(
+            """SELECT id_пользователя FROM "ЗапросЭксперту" WHERE id_запроса = %s""",
+            (request_id,),
+        )
+        owner_row = cursor.fetchone()
+        if not owner_row:
+            return jsonify({'error': 'Запрос не найден'}), 404
+        owner_id = owner_row[0]
+
         card_id = int(insect_id) if insect_id and insect_type else None
         card_type = insect_type if card_id else None
         if card_id and card_type and not image_url:
@@ -1424,6 +1480,11 @@ def answer_expert_request(request_id):
                 return jsonify({'error': 'Запрос не найден'}), 404
             
             conn.commit()
+
+            preview = answer.strip()
+            if len(preview) > 200:
+                preview = preview[:197] + '...'
+            user_notifications.notify_expert_response(owner_id, request_id, preview)
             
             return jsonify({
                 'success': True,

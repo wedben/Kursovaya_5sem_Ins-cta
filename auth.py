@@ -55,6 +55,9 @@ class User(UserMixin):
     def can_manage_requests(self) -> bool:
         return self.is_admin() or self.is_expert() or self.is_moderator()
 
+    def can_create_expert_request(self) -> bool:
+        return self.role == 'пользователь'
+
     def is_blocked(self) -> bool:
         return bool(self.blocked_permanent) or bool(self.blocked_until)
 

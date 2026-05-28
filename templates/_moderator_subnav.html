@@ -1,0 +1,10 @@
+<nav class="mod-subnav" aria-label="Разделы модератора">
+    <a href="{{ url_for('moderation_panel') }}"
+       class="mod-subnav-link{% if active_mod_section == 'requests' %} is-active{% endif %}">
+        Модерация запросов
+    </a>
+    <a href="{{ url_for('users_panel') }}"
+       class="mod-subnav-link{% if active_mod_section == 'users' %} is-active{% endif %}">
+        Управление пользователями
+    </a>
+</nav>
