@@ -90,11 +90,13 @@
             <div class="field-error {{ 'visible' if errors.get('gender') else '' }}">{{ errors.get('gender', '') }}</div>
         </div>
 
+        {% if recaptcha_enabled %}
         <div class="form-group {{ 'has-error' if errors.get('recaptcha') else '' }}">
             <label>Проверка</label>
             <div class="g-recaptcha" data-sitekey="{{ recaptcha_site_key }}"></div>
             <div class="field-error {{ 'visible' if errors.get('recaptcha') else '' }}">{{ errors.get('recaptcha', '') }}</div>
         </div>
+        {% endif %}
 
         <div class="form-group {{ 'has-error' if errors.get('rules') else '' }}">
             <div class="auth-checkbox-group">
@@ -118,5 +120,5 @@
 
 {% block scripts %}
 <script src="{{ url_for('static', filename='js/auth.js') }}"></script>
-<script src="https://www.google.com/recaptcha/api.js" async defer></script>
+{% if recaptcha_enabled %}<script src="https://www.google.com/recaptcha/api.js" async defer></script>{% endif %}
 {% endblock %}

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Модерация - Определитель насекомых</title>
+    <title>Модерация запросов — Определитель насекомых</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
     <style>
@@ -67,12 +67,15 @@
 <div id="app" class="page">
     <div class="topbar">
         <div>
-            <div style="font-size: 1.6em; font-weight: 800;">Модерация</div>
-            <div class="muted" style="color: rgba(255,255,255,0.9);">Запросы на проверке: {{ requests.length }}</div>
+            <div style="font-size: 1.6em; font-weight: 800;">Модерация запросов</div>
+            <div class="muted" style="color: rgba(255,255,255,0.9);">На проверке: {{ requests.length }}</div>
         </div>
         <div style="display:flex; gap:10px; flex-wrap:wrap;">
             <a class="btn secondary" href="/">На главную</a>
             <a class="btn secondary" href="/users">Пользователи</a>
+            <button type="button" class="btn secondary" @click="load({ silent: true })" :disabled="loading || refreshing">
+                {{ refreshing ? 'Обновление…' : 'Обновить' }}
+            </button>
         </div>
     </div>
 
@@ -131,7 +134,8 @@ createApp({
       error: null,
       actionId: null,
       deleteTarget: null,
-      deleteReason: ""
+      deleteReason: "",
+      refreshing: false
     };
   },
   methods: {
@@ -139,18 +143,24 @@ createApp({
       if (!s) return "";
       try { return new Date(s).toLocaleString('ru-RU'); } catch (_) { return s; }
     },
-    async load() {
-      this.loading = true;
-      this.error = null;
+    async load(options = {}) {
+      const silent = options.silent === true;
+      if (silent) {
+        this.refreshing = true;
+      } else {
+        this.loading = true;
+        this.error = null;
+      }
       try {
         const res = await fetch('/api/moderation/requests');
         const json = await res.json();
         if (!json.success) throw new Error(json.error || 'Ошибка');
         this.requests = json.requests || [];
       } catch (e) {
-        this.error = e.message || 'Ошибка';
+        if (!silent) this.error = e.message || 'Ошибка';
       } finally {
-        this.loading = false;
+        if (silent) this.refreshing = false;
+        else this.loading = false;
       }
     },
     async approve(id) {
@@ -158,8 +168,14 @@ createApp({
       try {
         const res = await fetch(`/api/moderation/request/${id}/approve`, { method: 'POST' });
         const json = await res.json();
-        if (!json.success) alert(json.error || 'Ошибка');
-        await this.load();
+        if (!json.success) {
+          alert(json.error || 'Ошибка');
+          return;
+        }
+        this.requests = this.requests.filter(r => r.id_запроса !== id);
+        if (this.deleteTarget && this.deleteTarget.id_запроса === id) {
+          this.cancelDelete();
+        }
       } finally {
         this.actionId = null;
       }
@@ -182,9 +198,12 @@ createApp({
           body: JSON.stringify({ reason: this.deleteReason.trim() })
         });
         const json = await res.json();
-        if (!json.success) alert(json.error || 'Ошибка');
+        if (!json.success) {
+          alert(json.error || 'Ошибка');
+          return;
+        }
+        this.requests = this.requests.filter(r => r.id_запроса !== id);
         this.cancelDelete();
-        await this.load();
       } finally {
         this.actionId = null;
       }
@@ -192,7 +211,6 @@ createApp({
   },
   mounted() {
     this.load();
-    setInterval(() => this.load(), 15000);
   }
 }).mount('#app');
 </script>

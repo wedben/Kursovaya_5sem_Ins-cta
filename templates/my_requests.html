@@ -35,10 +35,20 @@
             font-weight: 600;
         }
         .status-на_модерации { background: #e2e3e5; color: #383d41; }
-        .status-ожидает { background: #fff3cd; color: #856404; }
-        .status-в_работе { background: #d1ecf1; color: #0c5460; }
+        .status-открыт { background: #d4edda; color: #155724; }
+        .status-ожидает { background: #d4edda; color: #155724; }
+        .status-в_работе { background: #d4edda; color: #155724; }
         .status-отвечено { background: #d4edda; color: #155724; }
         .status-закрыт { background: #e2e3e5; color: #383d41; }
+        .catalog-link {
+            color: #667eea;
+            font-weight: 600;
+            text-decoration: none;
+        }
+        .catalog-link:hover { text-decoration: underline; }
+        .catalog-card {
+            margin-top: 12px; padding: 14px; background: #fff; border: 2px solid #667eea; border-radius: 10px;
+        }
         .status-удален_модератором { background: #f8d7da; color: #721c24; }
         .status-отклонено { background: #f8d7da; color: #721c24; }
         .answer-section {
@@ -87,9 +97,7 @@
                     <div style="display: flex; gap: 10px; margin-top: 10px;">
                         <button @click="filterStatus = ''" :class="{'active': filterStatus === ''}" style="padding: 8px 15px; border: 2px solid #ddd; border-radius: 8px; background: white; cursor: pointer;">Все</button>
                         <button @click="filterStatus = 'на_модерации'" :class="{'active': filterStatus === 'на_модерации'}" style="padding: 8px 15px; border: 2px solid #ddd; border-radius: 8px; background: white; cursor: pointer;">На проверке</button>
-                        <button @click="filterStatus = 'ожидает'" :class="{'active': filterStatus === 'ожидает'}" style="padding: 8px 15px; border: 2px solid #ddd; border-radius: 8px; background: white; cursor: pointer;">Ожидают</button>
-                        <button @click="filterStatus = 'в_работе'" :class="{'active': filterStatus === 'в_работе'}" style="padding: 8px 15px; border: 2px solid #ddd; border-radius: 8px; background: white; cursor: pointer;">В работе</button>
-                        <button @click="filterStatus = 'отвечено'" :class="{'active': filterStatus === 'отвечено'}" style="padding: 8px 15px; border: 2px solid #ddd; border-radius: 8px; background: white; cursor: pointer;">С ответом</button>
+                        <button @click="filterStatus = 'открыт'" :class="{'active': filterStatus === 'открыт'}" style="padding: 8px 15px; border: 2px solid #ddd; border-radius: 8px; background: white; cursor: pointer;">Открытые</button>
                         <button @click="filterStatus = 'закрыт'" :class="{'active': filterStatus === 'закрыт'}" style="padding: 8px 15px; border: 2px solid #ddd; border-radius: 8px; background: white; cursor: pointer;">Закрытые</button>
                     </div>
                 </div>
@@ -102,8 +110,8 @@
                                 Дата создания: <span v-text="formatDate(request.дата_создания)"></span>
                             </p>
                         </div>
-                        <span :class="['status-badge', 'status-' + request.статус]">
-                            <span v-text="request.статус"></span>
+                        <span :class="['status-badge', 'status-' + displayStatus(request)]">
+                            <span v-text="statusLabel(request.статус)"></span>
                         </span>
                     </div>
 
@@ -124,6 +132,26 @@
 
                     <div v-if="request.дополнительные_данные" style="margin-bottom: 10px;">
                         <strong>Дополнительно:</strong> <span v-text="request.дополнительные_данные"></span>
+                    </div>
+
+                    <div v-if="request.attached_card" class="catalog-card">
+                        <strong>Определение эксперта (из каталога):</strong>
+                        <div style="font-weight:600;margin-top:6px;">
+                            <a
+                                v-if="request.attached_card.catalog_url"
+                                :href="request.attached_card.catalog_url"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                class="catalog-link"
+                                v-text="request.attached_card.display_name || request.attached_card.name_ru"
+                            ></a>
+                            <span v-else v-text="request.attached_card.display_name || request.attached_card.name_ru"></span>
+                        </div>
+                        <div v-if="request.attached_card.name_lat" style="font-style:italic;color:#666;" v-text="request.attached_card.name_lat"></div>
+                        <div style="font-size:0.9em;color:#666;margin-top:4px;">
+                            <span v-text="request.attached_card.type_label"></span>
+                            <span v-if="request.attached_card.gender_label" v-text="' · ' + request.attached_card.gender_label"></span>
+                        </div>
                     </div>
 
                     <!-- Ответ эксперта -->
@@ -148,7 +176,7 @@
                         </p>
                     </div>
 
-                    <div v-else class="no-answer">
+                    <div v-else-if="isWaitingForResponse(request)" class="no-answer">
                         <p style="margin: 0;">
                             <strong>Ожидание ответа</strong>
                         </p>
@@ -162,7 +190,7 @@
                                 style="padding: 10px 18px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 8px; cursor: pointer;">
                             Открыть чат
                         </button>
-                        <button v-if="request.статус !== 'закрыт' && request.статус !== 'удален_модератором'"
+                        <button v-if="isOpenStatus(request.статус)"
                                 @click="closeRequest(request.id_запроса)"
                                 style="padding: 10px 18px; background: #dc3545; color: white; border: none; border-radius: 8px; cursor: pointer;">
                             Ответ получен
@@ -199,10 +227,37 @@
                     if (!this.filterStatus) {
                         return this.requests;
                     }
+                    if (this.filterStatus === 'открыт') {
+                        return this.requests.filter(r => this.isOpenStatus(r.статус));
+                    }
                     return this.requests.filter(r => r.статус === this.filterStatus);
                 }
             },
             methods: {
+                isOpenStatus(s) {
+                    return ['открыт', 'ожидает', 'в_работе', 'отвечено'].includes(s);
+                },
+                hasExpertResponse(request) {
+                    return !!(request.ответ_эксперта || request.attached_card);
+                },
+                isWaitingForResponse(request) {
+                    return this.isOpenStatus(request.статус) && !this.hasExpertResponse(request);
+                },
+                displayStatus(request) {
+                    return this.isOpenStatus(request.статус) ? 'открыт' : request.статус;
+                },
+                statusLabel(s) {
+                    const m = {
+                        'на_модерации': 'На модерации',
+                        'открыт': 'Открыт',
+                        'ожидает': 'Открыт',
+                        'в_работе': 'Открыт',
+                        'отвечено': 'Открыт',
+                        'закрыт': 'Закрыт',
+                        'удален_модератором': 'Удалён',
+                    };
+                    return m[s] || s;
+                },
                 async loadRequests() {
                     this.loading = true;
                     this.error = null;
@@ -262,8 +317,6 @@
             },
             mounted() {
                 this.loadRequests();
-                // Обновляем каждые 30 секунд
-                setInterval(() => this.loadRequests(), 30000);
             }
         }).mount('#app');
 

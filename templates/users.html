@@ -218,7 +218,7 @@ createApp({
       } finally {
         this.savingId = null;
       }
-    }
+    },
     async permanentBlock(u) {
       if (!this.me || this.me.role !== 'админ') return;
       if (!confirm('Заблокировать бессрочно?')) return;
@@ -251,7 +251,7 @@ createApp({
       } finally {
         this.savingId = null;
       }
-    }
+    },
   },
   async mounted() { await this.loadMe(); await this.load(); }
 }).mount('#app');

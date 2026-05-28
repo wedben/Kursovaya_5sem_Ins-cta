@@ -3,148 +3,629 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Запрос к эксперту</title>
+    <title>Чат — запрос #{{ request_id }}</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
     <style>
-        .chat-container {
-            max-width: 900px;
+        html, body {
+            margin: 0;
+            height: 100%;
+            overflow: hidden;
+        }
+        .chat-page {
+            max-width: 920px;
             margin: 0 auto;
-            padding: 20px;
+            padding: 12px;
+            height: 100vh;
+            height: 100dvh;
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
         }
         .chat-card {
-            background: white;
+            flex: 1;
+            min-height: 0;
+            display: flex;
+            flex-direction: column;
+            background: #fff;
             border-radius: 15px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
-            overflow: hidden;
             border: 2px solid #e0e0e0;
+            overflow: hidden;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
         }
         .chat-header {
+            flex-shrink: 0;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 20px;
+            color: #fff;
+            padding: 14px 16px;
             display: flex;
             justify-content: space-between;
             align-items: center;
-            gap: 15px;
             flex-wrap: wrap;
+            gap: 10px;
         }
-        .chat-header .meta {
-            opacity: 0.95;
-            font-size: 0.95em;
-        }
+        .chat-header .meta { opacity: 0.95; font-size: 0.95em; }
         .chat-body {
-            padding: 20px;
-            max-height: 520px;
-            overflow: auto;
-            background: #f8f9fa;
-        }
-        .msg {
+            flex: 1;
+            min-height: 0;
+            overflow-y: auto;
+            overflow-x: hidden;
+            -webkit-overflow-scrolling: touch;
             display: flex;
-            margin-bottom: 12px;
+            flex-direction: column;
         }
-        .msg.me { justify-content: flex-end; }
-        .bubble {
-            max-width: 75%;
-            padding: 12px 14px;
-            border-radius: 12px;
-            border: 1px solid rgba(0,0,0,0.06);
-            background: white;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
-            white-space: pre-wrap;
-            line-height: 1.4;
-        }
-        .msg.me .bubble {
-            background: #e9f0ff;
-            border-color: rgba(102,126,234,0.25);
-        }
-        .time {
-            margin-top: 6px;
-            font-size: 0.8em;
-            color: #666;
-        }
-        .chat-footer {
+        .chat-messages {
+            flex: 1;
+            min-height: 100px;
             padding: 16px;
+            background: #f0f2f5;
+            display: flex;
+            flex-direction: column;
+        }
+        .msg-row { display: flex; margin-bottom: 10px; max-width: 100%; }
+        .msg-row.me { justify-content: flex-end; }
+        .msg-row.other { justify-content: flex-start; }
+        .msg-col { display: flex; flex-direction: column; max-width: min(78%, 520px); }
+        .msg-row.me .msg-col { align-items: flex-end; }
+        .msg-row.other .msg-col { align-items: flex-start; }
+        .bubble {
+            padding: 10px 14px; border-radius: 14px;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.06); word-wrap: break-word; white-space: pre-wrap; line-height: 1.45;
+        }
+        .msg-row.me .bubble { background: #e9f0ff; border-bottom-right-radius: 4px; }
+        .msg-row.other .bubble { background: #fff; border-bottom-left-radius: 4px; }
+        .bubble a { color: #667eea; word-break: break-all; }
+        .bubble a:hover { text-decoration: underline; }
+        .msg-meta { font-size: 0.75em; color: #666; margin-top: 4px; text-align: right; }
+        .msg-row.other .msg-meta { text-align: left; }
+        .chat-footer {
+            flex-shrink: 0;
+            padding: 12px 16px;
+            background: #fff;
+            border-top: 1px solid #e0e0e0;
             display: flex;
             gap: 10px;
-            border-top: 1px solid #ececec;
-            align-items: center;
-            background: white;
+            align-items: flex-end;
+            flex-wrap: wrap;
         }
         .chat-input {
             flex: 1;
-            padding: 12px;
+            min-width: 0;
+            min-height: 44px;
+            max-height: 120px;
+            padding: 10px 14px;
+            border: 2px solid #ddd;
+            border-radius: 12px;
+            font-size: 15px;
+            font-family: inherit;
+            resize: none;
+            line-height: 1.45;
+            box-sizing: border-box;
+        }
+        .chat-input:focus { outline: none; border-color: #667eea; }
+        .btn-send {
+            flex-shrink: 0;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 12px;
+            font-weight: 600;
+            color: #fff;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            cursor: pointer;
+        }
+        .btn-send:disabled { opacity: 0.55; cursor: not-allowed; }
+        .btn-ghost { background: #6c757d; color: #fff; text-decoration: none; padding: 10px 16px; border-radius: 10px; display: inline-block; border: none; cursor: pointer; font: inherit; }
+        .chat-header-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: flex-end; }
+        .btn-exit {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 10px 16px;
+            border-radius: 10px;
+            border: 2px solid rgba(255, 255, 255, 0.75);
+            background: rgba(255, 255, 255, 0.15);
+            color: #fff;
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 0.95em;
+            white-space: nowrap;
+        }
+        .btn-exit:hover { background: rgba(255, 255, 255, 0.3); }
+        .btn-exit::before { content: '←'; font-weight: 700; }
+        .status-pill { display: inline-block; padding: 4px 10px; border-radius: 999px; background: rgba(255,255,255,0.25); font-size: 0.8em; }
+        .conn-badge { font-size: 0.8em; color: #8bc34a; margin-left: 8px; }
+        .typing-hint { font-size: 0.8em; color: #888; padding: 4px 16px; font-style: italic; }
+        .chat-load-error {
+            margin: 12px 16px;
+            padding: 12px 14px;
+            background: #fff3cd;
+            border: 1px solid #ffc107;
+            border-radius: 10px;
+            color: #856404;
+            font-size: 0.9em;
+        }
+        .chat-loading-overlay {
+            flex: 1; display: flex; align-items: center; justify-content: center;
+            min-height: 200px; padding: 24px;
+        }
+        .chat-loading-box {
+            text-align: center; color: #555; user-select: none;
+        }
+        .chat-loading-box p {
+            margin: 14px 0 0; font-size: 1.05em; font-weight: 500;
+        }
+        .chat-loading-dots {
+            display: inline-flex; gap: 8px; align-items: flex-end; height: 28px;
+        }
+        .chat-loading-dots span {
+            width: 10px; height: 10px; border-radius: 50%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            animation: chat-dot-bounce 1.2s ease-in-out infinite;
+        }
+        .chat-loading-dots span:nth-child(2) { animation-delay: 0.15s; }
+        .chat-loading-dots span:nth-child(3) { animation-delay: 0.3s; }
+        @keyframes chat-dot-bounce {
+            0%, 80%, 100% { transform: translateY(0); opacity: 0.45; }
+            40% { transform: translateY(-10px); opacity: 1; }
+        }
+        .loading-dots-text::after {
+            display: inline-block;
+            width: 1.4em;
+            text-align: left;
+            animation: loading-dots-cycle 1.2s steps(1, end) infinite;
+            content: '.';
+        }
+        @keyframes loading-dots-cycle {
+            0% { content: '.'; }
+            33% { content: '..'; }
+            66% { content: '...'; }
+        }
+        .request-details {
+            flex-shrink: 0;
+            margin: 12px 12px 0;
+            padding: 14px 16px;
+            background: #fff;
+            border: 1px solid #e0e0e0;
+            border-radius: 12px;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+        }
+        .request-details h4 { margin: 0 0 12px; font-size: 0.95em; color: #444; }
+        .request-details dl { margin: 0; }
+        .request-details dt {
+            font-size: 0.75em; font-weight: 700; text-transform: uppercase;
+            letter-spacing: 0.04em; color: #888; margin-top: 10px;
+        }
+        .request-details dt:first-of-type { margin-top: 0; }
+        .request-details dd {
+            margin: 4px 0 0; font-size: 0.95em; line-height: 1.5;
+            white-space: pre-wrap; word-wrap: break-word;
+        }
+        .attached-card {
+            flex-shrink: 0;
+            margin: 12px;
+            padding: 14px;
+            background: #fff;
+            border: 2px solid #667eea;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+        }
+        .attached-card h4 { margin: 0 0 8px; color: #333; font-size: 0.95em; }
+        .catalog-link {
+            color: #667eea;
+            font-weight: 700;
+            text-decoration: none;
+        }
+        .catalog-link:hover { text-decoration: underline; }
+        .catalog-link-btn {
+            display: inline-block;
+            margin-top: 10px;
+            font-size: 0.9em;
+            color: #667eea;
+            font-weight: 600;
+            text-decoration: none;
+        }
+        .catalog-link-btn:hover { text-decoration: underline; }
+        .attached-card-actions {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin-top: 12px;
+        }
+        .btn-card-action {
+            padding: 6px 12px;
+            border-radius: 8px;
+            font-size: 0.85em;
+            font-weight: 600;
+            cursor: pointer;
+            border: none;
+        }
+        .btn-card-replace {
+            background: #667eea;
+            color: #fff;
+        }
+        .btn-card-replace:hover { background: #5568d3; }
+        .btn-card-detach {
+            background: #fff;
+            color: #dc3545;
+            border: 1px solid #dc3545;
+        }
+        .btn-card-detach:hover { background: #fff5f5; }
+        .btn-card-detach:disabled { opacity: 0.5; cursor: not-allowed; }
+        .chat-footer-row {
+            width: 100%;
+            display: flex;
+            gap: 10px;
+            align-items: flex-end;
+            flex-wrap: wrap;
+        }
+        .btn-catalog {
+            flex-shrink: 0;
+            padding: 10px 14px;
+            border: 2px solid #667eea;
+            border-radius: 12px;
+            background: #fff;
+            color: #667eea;
+            font-weight: 600;
+            font-size: 0.9em;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+        .btn-catalog:hover { background: #f0f4ff; }
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 2000;
+            background: rgba(0, 0, 0, 0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 16px;
+            box-sizing: border-box;
+        }
+        .modal-box {
+            background: #fff;
+            border-radius: 16px;
+            width: 100%;
+            max-width: 520px;
+            max-height: min(90vh, 520px);
+            overflow-y: auto;
+            padding: 22px;
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
+        }
+        .modal-box h3 { margin: 0 0 16px; font-size: 1.15em; color: #333; }
+        .attach-search {
+            width: 100%;
+            padding: 12px 14px;
             border: 2px solid #ddd;
             border-radius: 10px;
             font-size: 1em;
-            font-family: inherit;
+            box-sizing: border-box;
+            margin-bottom: 10px;
         }
-        .chat-input:focus {
-            outline: none;
-            border-color: #667eea;
+        .attach-search:focus { border-color: #667eea; outline: none; }
+        .attach-toolbar {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin-bottom: 12px;
         }
-        .btn {
-            padding: 12px 18px;
+        .btn-list-toggle {
+            padding: 8px 12px;
+            border: 1px solid #667eea;
+            border-radius: 8px;
+            background: #fff;
+            color: #667eea;
+            font-size: 0.85em;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        .btn-list-toggle:hover, .btn-list-toggle.active { background: #f0f4ff; }
+        .attach-results {
+            max-height: 280px;
+            overflow-y: auto;
+            border: 1px solid #e8e8e8;
+            border-radius: 10px;
+            margin-bottom: 12px;
+        }
+        .attach-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            padding: 10px 12px;
+            cursor: pointer;
+            border-bottom: 1px solid #f0f0f0;
+            text-align: left;
+        }
+        .attach-item:last-child { border-bottom: none; }
+        .attach-item:hover { background: #f8f9ff; }
+        .attach-item.selected { background: #e9f0ff; border-left: 3px solid #667eea; padding-left: 9px; }
+        .attach-item-main { flex: 1; min-width: 0; }
+        .attach-item-title { font-weight: 600; color: #222; line-height: 1.3; }
+        .attach-item-lat { font-size: 0.85em; color: #666; font-style: italic; }
+        .attach-item-meta { font-size: 0.8em; color: #888; margin-top: 4px; }
+        .gender-badge {
+            flex-shrink: 0;
+            font-size: 0.75em;
+            font-weight: 700;
+            padding: 3px 8px;
+            border-radius: 6px;
+            text-transform: uppercase;
+            letter-spacing: 0.02em;
+        }
+        .gender-badge.male { background: #e3f2fd; color: #1565c0; }
+        .gender-badge.female { background: #fce4ec; color: #c2185b; }
+        .attach-hint {
+            padding: 16px;
+            text-align: center;
+            color: #888;
+            font-size: 0.9em;
+        }
+        .attach-selected-preview {
+            padding: 10px 12px;
+            background: #f0f4ff;
+            border-radius: 8px;
+            font-size: 0.9em;
+            margin-bottom: 12px;
+            color: #333;
+        }
+        .modal-actions {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+            flex-wrap: wrap;
+        }
+        .modal-actions .btn-ghost { color: #333; background: #e9ecef; }
+        .chat-footer-closed {
+            flex-shrink: 0;
+            padding: 14px 16px;
+            text-align: center;
+            color: #666;
+            background: #fff;
+            border-top: 1px solid #e0e0e0;
+        }
+        @media (max-width: 560px) {
+            .chat-page { padding: 8px; }
+            .chat-header .btn-ghost { padding: 8px 12px; font-size: 0.9em; }
+            .chat-footer { flex-direction: column; align-items: stretch; }
+            .btn-send { width: 100%; padding: 12px; }
+        }
+        .btn-attach {
+            padding: 10px 20px;
+            background: #28a745;
+            color: #fff;
             border: none;
             border-radius: 10px;
             cursor: pointer;
             font-weight: 600;
-            color: white;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         }
-        .btn.secondary {
-            background: #6c757d;
-        }
-        .btn.danger {
-            background: #dc3545;
-        }
-        .btn:disabled {
-            opacity: 0.65;
-            cursor: not-allowed;
-        }
-        .status {
-            display: inline-block;
-            padding: 6px 12px;
-            background: rgba(255,255,255,0.2);
-            border: 1px solid rgba(255,255,255,0.25);
-            border-radius: 999px;
-            font-size: 0.85em;
-            font-weight: 600;
-        }
+        .btn-attach:disabled { opacity: 0.5; cursor: not-allowed; }
     </style>
 </head>
 <body>
 {% raw %}
-<div id="app" class="chat-container">
+<div id="app" class="chat-page">
     <div class="chat-card">
-        <div class="chat-header">
+        <header class="chat-header">
             <div>
-                <div style="font-size:1.2em; font-weight:700;">Запрос #{{ requestId }}</div>
+                <div style="font-size:1.15em;font-weight:700;">Запрос #{{ requestId }}</div>
                 <div class="meta" v-if="request">
-                    Статус: <span class="status">{{ request.статус }}</span>
+                    <span class="status-pill">{{ statusLabel(request.статус) }}</span>
+                    <span class="conn-badge" :class="{ ok: connected, bad: !connected }">
+                        {{ connected ? 'онлайн' : 'подключение…' }}
+                    </span>
                 </div>
             </div>
-            <div style="display:flex; gap:10px; flex-wrap:wrap;">
-                <button class="btn secondary" @click="goBack">Назад</button>
-                <button v-if="canClose" class="btn danger" @click="closeRequest" :disabled="closing">Ответ получен</button>
+            <div class="chat-header-actions">
+                <a class="btn-exit" :href="listUrl">{{ listLabel }}</a>
+                <button v-if="canClose" type="button" class="btn-ghost" @click="closeRequest" :disabled="closing">Ответ получен</button>
+            </div>
+        </header>
+
+        <div class="chat-body">
+        <div v-if="request && !loading" class="request-details">
+            <h4>Данные запроса</h4>
+            <dl>
+                <dt>Описание насекомого</dt>
+                <dd>{{ request.описание_насекомого || '—' }}</dd>
+                <template v-if="request.место_наблюдения">
+                    <dt>Место наблюдения</dt>
+                    <dd>{{ request.место_наблюдения }}</dd>
+                </template>
+                <template v-if="request.дата_наблюдения">
+                    <dt>Дата наблюдения</dt>
+                    <dd>{{ request.дата_наблюдения }}</dd>
+                </template>
+                <template v-if="request.дополнительные_данные">
+                    <dt>Дополнительно</dt>
+                    <dd>{{ request.дополнительные_данные }}</dd>
+                </template>
+            </dl>
+        </div>
+
+        <div v-if="request && request.attached_card" class="attached-card">
+            <h4>Карточка из каталога</h4>
+            <div style="font-weight:700;font-size:1.1em;">
+                <a
+                    v-if="request.attached_card.catalog_url"
+                    :href="request.attached_card.catalog_url"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="catalog-link"
+                >{{ request.attached_card.display_name || request.attached_card.name_ru }}</a>
+                <span v-else>{{ request.attached_card.display_name || request.attached_card.name_ru }}</span>
+            </div>
+            <div v-if="request.attached_card.name_lat" style="font-style:italic;color:#666;">{{ request.attached_card.name_lat }}</div>
+            <div style="font-size:0.9em;color:#666;margin-top:6px;">
+                {{ request.attached_card.type_label }}
+                <span v-if="request.attached_card.gender_label"> · {{ request.attached_card.gender_label }}</span>
+                <span v-if="request.attached_card.size"> · {{ request.attached_card.size }}</span>
+            </div>
+            <p v-if="request.attached_card.description" style="margin:8px 0 0;font-size:0.9em;">{{ request.attached_card.description }}</p>
+            <a
+                v-if="request.attached_card.catalog_url"
+                :href="request.attached_card.catalog_url"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="catalog-link-btn"
+            >Открыть карточку в каталоге →</a>
+            <div v-if="isExpert && isOpen" class="attached-card-actions">
+                <button type="button" class="btn-card-action btn-card-replace" @click="openAttachModal">
+                    Заменить карточку
+                </button>
+                <button
+                    type="button"
+                    class="btn-card-action btn-card-detach"
+                    :disabled="detachingCard"
+                    @click="detachCard"
+                >{{ detachingCard ? 'Открепление…' : 'Открепить' }}</button>
             </div>
         </div>
 
-        <div class="chat-body" ref="scrollBox">
-            <div v-if="loading" style="text-align:center; color:#666; padding:20px;">Загрузка...</div>
-            <div v-else>
-                <div v-for="m in messages" :key="m.id_сообщения" class="msg" :class="{ me: m.id_отправителя === currentUserId }">
-                    <div class="bubble">
-                        {{ m.текст }}
-                        <div class="time">{{ formatTime(m.дата_создания) }}</div>
+        <div class="chat-messages" ref="messagesEl" @scroll="onMessagesScroll">
+            <div v-if="chatLoadError" class="chat-load-error" role="alert">{{ chatLoadError }}</div>
+            <div v-if="loading" class="chat-loading-overlay" role="status" aria-live="polite">
+                <div class="chat-loading-box">
+                    <div class="chat-loading-dots" aria-hidden="true">
+                        <span></span><span></span><span></span>
+                    </div>
+                    <p>Загрузка чата<span class="loading-dots-text"></span></p>
+                </div>
+            </div>
+            <template v-else v-for="m in visibleMessages" :key="m.id_сообщения">
+                <div class="msg-row" :class="Number(m.id_отправителя) === userId ? 'me' : 'other'">
+                    <div class="msg-col">
+                        <div class="bubble" v-html="linkifyText(m.текст)"></div>
+                        <div class="msg-meta">{{ formatTime(m.дата_создания) }}</div>
                     </div>
                 </div>
-            </div>
+            </template>
+            <div v-if="typingText" class="typing-hint">{{ typingText }}</div>
+            <div v-if="!loading && visibleMessages.length === 0" class="typing-hint">Пока нет сообщений. Напишите первым.</div>
         </div>
 
-        <div class="chat-footer">
-            <input class="chat-input" v-model="text" :disabled="sending || isClosed" placeholder="Введите сообщение">
-            <button class="btn" @click="send" :disabled="sending || !text.trim() || isClosed">Отправить</button>
+        </div>
+
+        <footer class="chat-footer" v-if="!isClosed && !loading">
+            <div class="chat-footer-row">
+                <button
+                    v-if="isExpert && isOpen && !request?.attached_card"
+                    type="button"
+                    class="btn-catalog"
+                    @click="openAttachModal"
+                    title="Прикрепить карточку из каталога"
+                >Карточка из базы</button>
+                <textarea
+                    ref="inputEl"
+                    v-model="draft"
+                    class="chat-input"
+                    rows="2"
+                    :disabled="!connected || sending"
+                    placeholder="Сообщение…"
+                    @input="onDraftInput"
+                    @keydown.enter.exact.prevent="onEnterSend"
+                ></textarea>
+                <button type="button" class="btn-send" :disabled="!canSend" @click="sendMessage">Отправить</button>
+            </div>
+        </footer>
+        <footer v-else-if="!loading" class="chat-footer-closed">
+            Чат закрыт
+        </footer>
+    </div>
+
+    <div v-if="showAttachModal" class="modal-overlay" @click.self="closeAttachModal">
+        <div class="modal-box" role="dialog" aria-labelledby="attach-modal-title">
+            <h3 id="attach-modal-title">{{ request && request.attached_card ? 'Заменить карточку' : 'Прикрепить карточку из каталога' }}</h3>
+            <p style="margin:0 0 12px;color:#666;font-size:0.9em;">
+                Найдите вид по названию или откройте полный список. У самцов и самок — отдельные карточки.
+            </p>
+
+            <template v-if="attachViewMode === 'search'">
+                <input
+                    v-model.trim="attachSearchQuery"
+                    type="search"
+                    class="attach-search"
+                    placeholder="Поиск: название, латинское имя, пол…"
+                    :disabled="attachingCard"
+                    autocomplete="off"
+                />
+                <div class="attach-toolbar">
+                    <button
+                        type="button"
+                        class="btn-list-toggle"
+                        @click="attachViewMode = 'list'"
+                        :disabled="attachingCard"
+                    >Показать весь список</button>
+                </div>
+            </template>
+            <template v-else>
+                <div class="attach-toolbar">
+                    <button
+                        type="button"
+                        class="btn-list-toggle active"
+                        @click="attachViewMode = 'search'"
+                        :disabled="attachingCard"
+                    >← К поиску</button>
+                    <input
+                        v-model.trim="attachListFilter"
+                        type="search"
+                        class="attach-search"
+                        style="flex:1;min-width:140px;margin:0;"
+                        placeholder="Фильтр списка…"
+                        :disabled="attachingCard"
+                        autocomplete="off"
+                    />
+                </div>
+            </template>
+
+            <div v-if="selectedInsect" class="attach-selected-preview">
+                Выбрано:
+                <a
+                    v-if="selectedInsect.catalog_url"
+                    :href="selectedInsect.catalog_url"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="catalog-link"
+                ><strong>{{ selectedInsect.display_name || selectedInsect.name_ru }}</strong></a>
+                <strong v-else>{{ selectedInsect.display_name || selectedInsect.name_ru }}</strong>
+                <span v-if="selectedInsect.name_lat"> ({{ selectedInsect.name_lat }})</span>
+            </div>
+
+            <div class="attach-results">
+                <div
+                    v-for="ins in displayedAttachInsects"
+                    :key="insectKey(ins)"
+                    class="attach-item"
+                    :class="{ selected: selectedInsectKey === insectKey(ins) }"
+                    @click="selectInsect(ins)"
+                >
+                    <span
+                        v-if="ins.gender_label"
+                        class="gender-badge"
+                        :class="ins.gender === 'самец' ? 'male' : 'female'"
+                    >{{ ins.gender_label }}</span>
+                    <div class="attach-item-main">
+                        <div class="attach-item-title">{{ ins.name_ru }}</div>
+                        <div v-if="ins.name_lat" class="attach-item-lat">{{ ins.name_lat }}</div>
+                        <div class="attach-item-meta">
+                            {{ ins.type_label }}
+                            <span v-if="ins.size"> · {{ ins.size }}</span>
+                        </div>
+                    </div>
+                </div>
+                <div v-if="!displayedAttachInsects.length" class="attach-hint">
+                    <span v-if="attachViewMode === 'search' && !attachSearchQuery">Введите запрос для поиска</span>
+                    <span v-else>Ничего не найдено</span>
+                </div>
+            </div>
+
+            <div class="modal-actions">
+                <button type="button" class="btn-ghost" @click="closeAttachModal" :disabled="attachingCard">Отмена</button>
+                <button type="button" class="btn-attach" :disabled="!selectedInsectKey || attachingCard" @click="attachCard">
+                    {{ attachingCard ? 'Сохранение…' : (request && request.attached_card ? 'Заменить' : 'Прикрепить') }}
+                </button>
+            </div>
         </div>
     </div>
 </div>
@@ -154,111 +635,368 @@
 const { createApp } = Vue;
 
 createApp({
-  data() {
-    return {
-      requestId: {{ request_id }},
-      request: null,
-      messages: [],
-      text: "",
-      sending: false,
-      loading: true,
-      closing: false,
-      currentUserId: null,
-      isModerator: false,
-      isExpert: false,
-    };
-  },
-  computed: {
-    isClosed() {
-      return this.request && (this.request.статус === 'закрыт' || this.request.статус === 'удален_модератором');
+    data() {
+        return {
+            requestId: {{ request_id }},
+            userId: {{ user_id }},
+            listUrl: {{ list_url|tojson }},
+            listLabel: {{ list_label|tojson }},
+            isExpert: {{ 'true' if is_expert else 'false' }},
+            request: null,
+            messages: [],
+            draft: '',
+            loading: true,
+            chatLoadError: '',
+            chatLoaded: false,
+            closing: false,
+            sending: false,
+            connected: false,
+            shouldStickToBottom: true,
+            typingUsers: {},
+            allInsects: [],
+            selectedInsectKey: '',
+            attachSearchQuery: '',
+            attachListFilter: '',
+            attachViewMode: 'search',
+            attachingCard: false,
+            detachingCard: false,
+            showAttachModal: false,
+        };
     },
-    canClose() {
-      return this.request && this.request.id_пользователя === this.currentUserId && !this.isClosed;
-    }
-  },
-  methods: {
-    goBack() {
-      window.location.href = "/my-requests";
+    computed: {
+        isClosed() {
+            const s = this.request && this.request.статус;
+            return s === 'закрыт' || s === 'удален_модератором';
+        },
+        isOpen() {
+            const s = this.request && this.request.статус;
+            return ['открыт', 'ожидает', 'в_работе', 'отвечено'].includes(s);
+        },
+        canClose() {
+            return this.request && this.request.id_пользователя === this.userId && this.isOpen;
+        },
+        canSend() {
+            return this.connected && !this.isClosed && this.draft.trim() && !this.sending;
+        },
+        typingText() {
+            const ids = Object.keys(this.typingUsers).filter(id => id !== this.userId);
+            if (!ids.length) return '';
+            return 'печатает…';
+        },
+        visibleMessages() {
+            const desc = (this.request && this.request.описание_насекомого) || '';
+            return this.messages.filter(m => {
+                const t = (m.текст || '').trim();
+                if (t.startsWith('Запрос пользователя')) return false;
+                if (desc && t === desc.trim()) return false;
+                return true;
+            });
+        },
+        selectedInsect() {
+            if (!this.selectedInsectKey) return null;
+            return this.allInsects.find(i => this.insectKey(i) === this.selectedInsectKey) || null;
+        },
+        displayedAttachInsects() {
+            const q = (this.attachViewMode === 'search' ? this.attachSearchQuery : this.attachListFilter).trim().toLowerCase();
+            if (this.attachViewMode === 'search' && !q) return [];
+            let list = this.allInsects;
+            if (q) {
+                list = list.filter(ins => this.insectMatchesQuery(ins, q));
+            }
+            return list.slice(0, this.attachViewMode === 'search' ? 40 : 500);
+        },
     },
-    formatTime(iso) {
-      try {
-        const d = new Date(iso);
-        return d.toLocaleString();
-      } catch (_) {
-        return "";
-      }
+    methods: {
+        statusLabel(s) {
+            const m = {
+                'на_модерации': 'На модерации',
+                'открыт': 'Открыт',
+                'закрыт': 'Закрыт',
+                'удален_модератором': 'Удалён',
+            };
+            return m[s] || s;
+        },
+        typeLabel(t) {
+            return { dragonfly: 'Стрекозы', beetle: 'Жуки', butterfly: 'Бабочки', mushroom: 'Грибы', herb: 'Травы' }[t] || t;
+        },
+        insectKey(ins) {
+            return `${ins.type}:${ins.id}`;
+        },
+        insectMatchesQuery(ins, q) {
+            const parts = [
+                ins.name_ru,
+                ins.name_lat,
+                ins.display_name,
+                ins.gender_label,
+                ins.type_label,
+            ].filter(Boolean).join(' ').toLowerCase();
+            return parts.includes(q);
+        },
+        selectInsect(ins) {
+            this.selectedInsectKey = this.insectKey(ins);
+        },
+        async loadInsects() {
+            if (!this.isExpert) return;
+            try {
+                const res = await fetch('/api/insects-for-selection');
+                const data = await res.json();
+                if (data.success) this.allInsects = data.insects || [];
+            } catch (_) {}
+        },
+        openAttachModal() {
+            this.selectedInsectKey = '';
+            this.attachSearchQuery = '';
+            this.attachListFilter = '';
+            this.attachViewMode = 'search';
+            this.showAttachModal = true;
+            if (!this.allInsects.length) this.loadInsects();
+        },
+        closeAttachModal() {
+            if (this.attachingCard) return;
+            this.showAttachModal = false;
+            this.selectedInsectKey = '';
+            this.attachSearchQuery = '';
+            this.attachListFilter = '';
+            this.attachViewMode = 'search';
+        },
+        async detachCard() {
+            if (!confirm('Открепить карточку из каталога?')) return;
+            this.detachingCard = true;
+            try {
+                const res = await fetch(`/api/expert-request/${this.requestId}/detach-card`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                });
+                const json = await res.json();
+                if (!json.success) {
+                    alert(json.error || 'Ошибка');
+                    return;
+                }
+                if (this.request) {
+                    this.request.attached_card = null;
+                }
+            } finally {
+                this.detachingCard = false;
+            }
+        },
+        async attachCard() {
+            if (!this.selectedInsectKey) return;
+            const [insect_type, id] = this.selectedInsectKey.split(':');
+            this.attachingCard = true;
+            try {
+                const res = await fetch(`/api/expert-request/${this.requestId}/attach-card`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ insect_id: parseInt(id, 10), insect_type }),
+                });
+                const json = await res.json();
+                if (!json.success) {
+                    alert(json.error || 'Ошибка');
+                    return;
+                }
+                if (this.request) {
+                    this.request.attached_card = json.attached_card;
+                    this.request.статус = 'открыт';
+                }
+                this.showAttachModal = false;
+                this.selectedInsectKey = '';
+            } finally {
+                this.attachingCard = false;
+            }
+        },
+        formatChatMessage(text) {
+            if (!text) return '';
+            return String(text)
+                .replace(/\n\/catalog\/[a-z]+\/\d+\s*/gi, '\n')
+                .replace(/^\s*\/catalog\/[a-z]+\/\d+\s*$/gim, '')
+                .trim();
+        },
+        linkifyText(text) {
+            if (!text) return '';
+            const escaped = String(this.formatChatMessage(text))
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;');
+            return escaped.replace(
+                /(https?:\/\/[^\s<]+)/g,
+                '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>'
+            );
+        },
+        formatTime(iso) {
+            if (!iso) return '';
+            try {
+                return new Date(iso).toLocaleString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+            } catch (_) {
+                return iso;
+            }
+        },
+        onMessagesScroll() {
+            const el = this.$refs.messagesEl;
+            if (!el) return;
+            const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+            this.shouldStickToBottom = nearBottom;
+        },
+        scrollToBottom(force) {
+            this.$nextTick(() => {
+                const el = this.$refs.messagesEl;
+                if (el) el.scrollTop = el.scrollHeight;
+                this.shouldStickToBottom = true;
+            });
+        },
+        applyChatPayload(data) {
+            this.messages = data.messages || [];
+            this.request = data.request || null;
+            this.loading = false;
+            this.chatLoaded = true;
+            this.chatLoadError = '';
+            if (this._chatLoadTimer) {
+                clearTimeout(this._chatLoadTimer);
+                this._chatLoadTimer = null;
+            }
+            this.$nextTick(() => this.scrollToBottom(true));
+        },
+        async loadChatViaHttp() {
+            if (this.chatLoaded) return;
+            try {
+                const res = await fetch(`/api/expert-request/${this.requestId}`, { credentials: 'same-origin' });
+                const data = await res.json();
+                if (!res.ok || !data.success) {
+                    this.chatLoadError = data.error || 'Не удалось загрузить чат';
+                    this.loading = false;
+                    return;
+                }
+                this.applyChatPayload(data);
+            } catch (_) {
+                this.chatLoadError = 'Не удалось загрузить чат. Проверьте подключение к серверу.';
+                this.loading = false;
+            }
+        },
+        connectSocket() {
+            this.socket = io({ transports: ['websocket', 'polling'], withCredentials: true });
+
+            this.socket.on('connect', () => {
+                this.connected = true;
+                this.socket.emit('join_request', { request_id: this.requestId });
+            });
+
+            this.socket.on('disconnect', () => {
+                this.connected = false;
+            });
+
+            this.socket.on('connect_error', () => {
+                this.connected = false;
+                if (!this.chatLoaded) {
+                    this.loadChatViaHttp();
+                }
+            });
+
+            this.socket.on('chat_history', (data) => {
+                if (Number(data.request_id) !== Number(this.requestId)) return;
+                this.applyChatPayload(data);
+            });
+
+            this.socket.on('chat_error', (data) => {
+                this.chatLoadError = (data && data.message) || 'Ошибка чата';
+                this.loading = false;
+                if (!this.chatLoaded) {
+                    this.loadChatViaHttp();
+                }
+            });
+
+            this.socket.on('new_message', (msg) => {
+                if (this.messages.some(m => m.id_сообщения === msg.id_сообщения)) return;
+                this.messages.push(msg);
+                this.$nextTick(() => {
+                    if (this.shouldStickToBottom) this.scrollToBottom();
+                });
+            });
+
+            this.socket.on('error', (data) => {
+                const msg = (data && data.message) || '';
+                if (msg) alert(msg);
+            });
+
+            this.socket.on('card_attached', (data) => {
+                if (data.request_id !== this.requestId) return;
+                if (this.request) {
+                    this.request.attached_card = data.attached_card;
+                    this.request.статус = data.статус || 'открыт';
+                }
+            });
+
+            this.socket.on('card_detached', (data) => {
+                if (Number(data.request_id) !== Number(this.requestId)) return;
+                if (this.request) {
+                    this.request.attached_card = null;
+                }
+            });
+
+            this.socket.on('user_typing', (data) => {
+                if (data.request_id !== this.requestId || data.user_id === this.userId) return;
+                this.typingUsers[data.user_id] = true;
+                clearTimeout(this._typingTimers?.[data.user_id]);
+                if (!this._typingTimers) this._typingTimers = {};
+                this._typingTimers[data.user_id] = setTimeout(() => {
+                    delete this.typingUsers[data.user_id];
+                }, 2500);
+            });
+
+        },
+        sendMessage() {
+            const text = this.draft.trim();
+            if (!text || !this.connected) return;
+            this.sending = true;
+            this.socket.emit('send_message', { request_id: this.requestId, text }, (ack) => {
+                this.sending = false;
+                if (ack && ack.ok) {
+                    this.draft = '';
+                } else if (ack && ack.error) {
+                    alert(ack.error);
+                }
+            });
+        },
+        onEnterSend(e) {
+            if (!e.shiftKey) this.sendMessage();
+        },
+        onDraftInput() {
+            if (!this.socket || !this.connected) return;
+            clearTimeout(this._typingEmitTimer);
+            this._typingEmitTimer = setTimeout(() => {
+                this.socket.emit('typing', { request_id: this.requestId });
+            }, 300);
+        },
+        async closeRequest() {
+            if (!confirm('Закрыть запрос?')) return;
+            this.closing = true;
+            try {
+                const res = await fetch(`/api/expert-request/${this.requestId}/close`, { method: 'POST' });
+                const json = await res.json();
+                if (!json.success) alert(json.error || 'Ошибка');
+                else window.location.href = this.listUrl;
+            } finally {
+                this.closing = false;
+            }
+        },
     },
-    async load() {
-      this.loading = true;
-      const res = await fetch(`/api/expert-request/${this.requestId}`);
-      const json = await res.json();
-      if (!json.success) {
-        alert(json.error || "Ошибка загрузки");
-        this.goBack();
-        return;
-      }
-      this.request = json.request;
-      this.messages = json.messages || [];
-      // current user id is not directly available; infer by fetching /api/expert-requests and matching owner, or rely on session user data on index.
-      // simplest: request includes owner id; if not expert/moderator then user is owner.
-      // We will set currentUserId using a lightweight endpoint: /api/whoami implemented later if needed.
-      // For now we set it from a hidden global if exists.
-      if (window.__currentUser && window.__currentUser.id) {
-        this.currentUserId = window.__currentUser.id;
-      } else {
-        // fallback: assume owner (works for user chat)
-        this.currentUserId = this.request.id_пользователя;
-      }
-      this.loading = false;
-      this.$nextTick(() => this.scrollToBottom());
+    mounted() {
+        this.connectSocket();
+        this.loadInsects();
+        this._chatLoadTimer = setTimeout(() => {
+            if (!this.chatLoaded) {
+                this.loadChatViaHttp();
+            }
+        }, 6000);
     },
-    scrollToBottom() {
-      const el = this.$refs.scrollBox;
-      if (el) el.scrollTop = el.scrollHeight;
-    },
-    async send() {
-      const t = this.text.trim();
-      if (!t) return;
-      this.sending = true;
-      try {
-        const res = await fetch(`/api/expert-request/${this.requestId}/message`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ text: t })
-        });
-        const json = await res.json();
-        if (!json.success) {
-          alert(json.error || "Ошибка отправки");
-          return;
+    beforeUnmount() {
+        if (this._chatLoadTimer) {
+            clearTimeout(this._chatLoadTimer);
         }
-        this.text = "";
-        await this.load();
-      } finally {
-        this.sending = false;
-      }
-    },
-    async closeRequest() {
-      if (!confirm("Закрыть запрос?")) return;
-      this.closing = true;
-      try {
-        const res = await fetch(`/api/expert-request/${this.requestId}/close`, { method: "POST" });
-        const json = await res.json();
-        if (!json.success) {
-          alert(json.error || "Ошибка");
-          return;
+        if (this.socket) {
+            this.socket.disconnect();
         }
-        await this.load();
-      } finally {
-        this.closing = false;
-      }
     }
-  },
-  mounted() {
-    // If request_chat is opened from index, user data may be available in session only.
-    this.load();
-  }
-}).mount("#app");
+}).mount('#app');
 </script>
 </body>
 </html>
-

@@ -208,9 +208,9 @@ class User(UserMixin):
             """, (login,))
 
             row = cursor.fetchone()
-            # row: user columns (11) + пароль at index 11
-            if row and row[11] and check_password_hash(row[11], password):
-                return User._from_row(row[:11])
+            # row: user columns (12) + пароль at index 12
+            if row and row[12] and check_password_hash(row[12], password):
+                return User._from_row(row[:12])
             return None
         finally:
             cursor.close()

@@ -43,18 +43,33 @@ createApp({
                 elytra: '',
                 // Для бабочек
                 wingPattern: '',
-                timeOfDay: ''
+                timeOfDay: '',
+                // Грибы
+                cap: '',
+                stalk: '',
+                growth: '',
+                sizeCategory: '',
+                // Травы
+                lifeForm: '',
+                leaf: '',
+                aroma: '',
+                flowerState: ''
             },
             insectTypes: [
                 { value: 'dragonfly', label: 'Стрекоза', icon: '', image: '/static/images/dragon.png' },
                 { value: 'beetle', label: 'Жук', icon: '🪲' },
-                { value: 'butterfly', label: 'Бабочка', icon: '🦋' }
+                { value: 'butterfly', label: 'Бабочка', icon: '🦋' },
+                { value: 'mushroom', label: 'Гриб', icon: '🍄' },
+                { value: 'herb', label: 'Трава', icon: '🌿' }
             ],
             typeNames: {
                 'dragonfly': { one: 'стрекоза', few: 'стрекозы', many: 'стрекоз' },
                 'beetle': { one: 'жук', few: 'жука', many: 'жуков' },
-                'butterfly': { one: 'бабочка', few: 'бабочки', many: 'бабочек' }
+                'butterfly': { one: 'бабочка', few: 'бабочки', many: 'бабочек' },
+                'mushroom': { one: 'гриб', few: 'гриба', many: 'грибов' },
+                'herb': { one: 'растение', few: 'растения', many: 'растений' }
             },
+            catalogTypes: ['dragonfly', 'beetle', 'butterfly', 'mushroom', 'herb'],
             commonColors: ['синий', 'красный', 'зеленый', 'желтый', 'черный', 'коричневый', 'оранжевый', 'белый', 'фиолетовый', 'розовый'],
             commonHabitats: [
                 { value: 'лес', label: 'Лес', icon: '' },
@@ -70,6 +85,8 @@ createApp({
                 { value: 'осень', label: 'Осень', icon: '' },
                 { value: 'зима', label: 'Зима', icon: '' }
             ],
+            catalogFocusActive: false,
+            catalogFocusError: '',
             filterOptions: {
                 // Общие
                 basicColors: [],
@@ -90,9 +107,26 @@ createApp({
                 allSeasons: [],
                 // Бабочки
                 basicWingPatterns: [],
-                allWingPatterns: []
+                allWingPatterns: [],
+                // Грибы
+                basicSizeCategories: [],
+                sizeCategories: [],
+                allCaps: [],
+                allStalks: [],
+                // Травы
+                basicLifeForms: [],
+                lifeForms: [],
+                basicDiscoveryPeriods: [],
+                discoveryPeriods: [],
+                basicFlowerStates: [],
+                flowerStates: []
             }
         };
+    },
+    computed: {
+        searchButtonLabel() {
+            return this.loading ? 'Поиск...' : 'Найти';
+        },
     },
     methods: {
         openExpertRequestModal() {
@@ -152,6 +186,28 @@ createApp({
                         this.filterOptions.basicSeasons = data.options.basic_seasons || [];
                         this.filterOptions.allSeasons = data.options.all_seasons || data.options.seasons || [];
                     }
+                    else if (type === 'mushroom') {
+                        this.filterOptions.basicSizeCategories = data.options.basic_size_categories || [];
+                        this.filterOptions.sizeCategories = data.options.size_categories || [];
+                        this.filterOptions.basicHabitats = data.options.basic_habitats || [];
+                        this.filterOptions.allHabitats = data.options.all_habitats || [];
+                        this.filterOptions.basicSeasons = data.options.basic_seasons || [];
+                        this.filterOptions.allSeasons = data.options.all_seasons || [];
+                        this.filterOptions.allCaps = data.options.all_caps || [];
+                        this.filterOptions.allStalks = data.options.all_stalks || [];
+                    }
+                    else if (type === 'herb') {
+                        this.filterOptions.basicLifeForms = data.options.basic_life_forms || [];
+                        this.filterOptions.lifeForms = data.options.life_forms || [];
+                        this.filterOptions.basicColors = data.options.basic_colors || [];
+                        this.filterOptions.colors = data.options.colors || [];
+                        this.filterOptions.basicHabitats = data.options.basic_habitats || [];
+                        this.filterOptions.allHabitats = data.options.all_habitats || [];
+                        this.filterOptions.basicDiscoveryPeriods = data.options.basic_discovery_periods || [];
+                        this.filterOptions.discoveryPeriods = data.options.discovery_periods || [];
+                        this.filterOptions.basicFlowerStates = data.options.basic_flower_states || [];
+                        this.filterOptions.flowerStates = data.options.flower_states || [];
+                    }
                 }
             } catch (error) {
                 console.error('Ошибка при загрузке опций фильтров:', error);
@@ -167,7 +223,7 @@ createApp({
             
             try {
                 // Получаем все насекомые всех типов
-                const types = ['dragonfly', 'beetle', 'butterfly'];
+                const types = this.catalogTypes;
                 const allResults = [];
                 
                 for (const type of types) {
@@ -245,7 +301,7 @@ createApp({
         
         async searchInsects() {
             if (!this.selectedType) {
-        alert('Пожалуйста, выберите тип насекомого');
+        alert('Пожалуйста, выберите категорию');
         return;
     }
     
@@ -334,8 +390,55 @@ createApp({
                     if (this.searchParams.season) {
                         params.season = this.searchParams.season;
                     }
+                } else if (this.selectedType === 'mushroom') {
+                    if (this.searchParams.habitat.trim()) {
+                        params.habitat = this.searchParams.habitat.trim();
+                    }
+                    if (this.searchParams.season) {
+                        params.season = this.searchParams.season;
+                    }
+                    if (this.searchParams.cap.trim()) {
+                        params.cap = this.searchParams.cap.trim();
+                    }
+                    if (this.searchParams.stalk.trim()) {
+                        params.stalk = this.searchParams.stalk.trim();
+                    }
+                    if (this.searchParams.growth.trim()) {
+                        params.growth = this.searchParams.growth.trim();
+                    }
+                    if (this.searchParams.sizeCategory) {
+                        params.size_category = this.searchParams.sizeCategory;
+                    }
+                } else if (this.selectedType === 'herb') {
+                    if (this.searchParams.sizeMin) {
+                        params.size_min = this.searchParams.sizeMin;
+                    }
+                    if (this.searchParams.sizeMax) {
+                        params.size_max = this.searchParams.sizeMax;
+                    }
+                    if (this.searchParams.color.trim()) {
+                        params.color = this.searchParams.color.trim();
+                    }
+                    if (this.searchParams.habitat.trim()) {
+                        params.habitat = this.searchParams.habitat.trim();
+                    }
+                    if (this.searchParams.season) {
+                        params.season = this.searchParams.season;
+                    }
+                    if (this.searchParams.lifeForm) {
+                        params.life_form = this.searchParams.lifeForm;
+                    }
+                    if (this.searchParams.leaf.trim()) {
+                        params.leaf = this.searchParams.leaf.trim();
+                    }
+                    if (this.searchParams.aroma.trim()) {
+                        params.aroma = this.searchParams.aroma.trim();
+                    }
+                    if (this.searchParams.flowerState) {
+                        params.flower_state = this.searchParams.flowerState;
+                    }
                 }
-                
+        
         const response = await fetch('/api/search', {
             method: 'POST',
             headers: {
@@ -383,7 +486,15 @@ createApp({
                 surfaceType: '',
                 elytra: '',
                 wingPattern: '',
-                timeOfDay: ''
+                timeOfDay: '',
+                cap: '',
+                stalk: '',
+                growth: '',
+                sizeCategory: '',
+                lifeForm: '',
+                leaf: '',
+                aroma: '',
+                flowerState: ''
             };
             this.results = [];
             this.searchPerformed = false;
@@ -398,16 +509,49 @@ createApp({
         },
         
         getTypeName(count) {
-            if (!this.selectedType) return 'насекомых';
+            if (!this.selectedType) return 'записей';
             
             const names = this.typeNames[this.selectedType];
-            if (!names) return 'насекомых';
+            if (!names) return 'записей';
             
             // Простая логика для русского языка
             if (count === 0) return names.many;
             if (count === 1) return names.one;
             if (count >= 2 && count <= 4) return names.few;
             return names.many;
+        },
+
+        catalogRecordsLabel(count) {
+            const n = Math.abs(Number(count) || 0);
+            const mod10 = n % 10;
+            const mod100 = n % 100;
+            if (mod10 === 1 && mod100 !== 11) return 'запись';
+            if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) return 'записи';
+            return 'записей';
+        },
+
+        habitatFieldLabel(type) {
+            const labels = {
+                mushroom: 'Место произрастания',
+                herb: 'Место произрастания',
+            };
+            return labels[type] || 'Место обитания';
+        },
+
+        seasonFieldLabel(type) {
+            const labels = {
+                mushroom: 'Сезон',
+                herb: 'Период обнаружения',
+            };
+            return labels[type] || 'Период';
+        },
+
+        colorFieldLabel(type) {
+            const labels = {
+                mushroom: 'Шляпка',
+                herb: 'Цветок',
+            };
+            return labels[type] || 'Цвет';
         },
         
         toggleColor(color) {
@@ -500,13 +644,31 @@ createApp({
             return typeof icon === 'string' && icon.startsWith('/static/');
         },
         
+        toggleBasicFlowerState(state) {
+            this.searchParams.flowerState = this.searchParams.flowerState === state ? '' : state;
+        },
+
+        toggleBasicDiscoveryPeriod(period) {
+            this.searchParams.season = this.searchParams.season === period ? '' : period;
+        },
+
+        toggleBasicLifeForm(form) {
+            this.searchParams.lifeForm = this.searchParams.lifeForm === form ? '' : form;
+        },
+
+        toggleBasicSizeCategory(size) {
+            this.searchParams.sizeCategory = this.searchParams.sizeCategory === size ? '' : size;
+        },
+
         getTypeLabel(type) {
             const labels = {
                 'dragonfly': 'Стрекоза',
                 'beetle': 'Жук',
-                'butterfly': 'Бабочка'
+                'butterfly': 'Бабочка',
+                'mushroom': 'Гриб',
+                'herb': 'Трава'
             };
-            return labels[type] || 'Насекомое';
+            return labels[type] || 'Объект';
         },
         
         extractGender(description) {
@@ -558,12 +720,12 @@ createApp({
                 
                 const data = await response.json();
                 if (data.success) {
-                    this.expertRequestSuccess = 'Запрос отправлен на проверку';
+                    const id = data.request_id;
                     this.resetExpertRequest();
-                    setTimeout(() => {
-                        this.showExpertRequestModal = false;
-                        this.expertRequestSuccess = '';
-                    }, 1200);
+                    this.showExpertRequestModal = false;
+                    if (id) {
+                        window.location.href = `/request/${id}`;
+                    }
                 } else {
                     this.expertRequestError = data.error || 'Ошибка при отправке запроса';
                 }
@@ -609,7 +771,71 @@ createApp({
                     container.style.display = 'none';
                 }
             }
-        }
+        },
+
+        catalogCardDomId(type, id) {
+            if (!type || !id) return '';
+            return `catalog-card-${type}-${id}`;
+        },
+
+        async openCatalogFromQuery() {
+            const params = new URLSearchParams(window.location.search);
+            const type = params.get('catalog');
+            const id = parseInt(params.get('card_id') || params.get('id'), 10);
+            if (!type || !id || !this.catalogTypes.includes(type)) {
+                return;
+            }
+            window.location.replace(`/catalog/${type}/${id}`);
+        },
+
+        clearCatalogFocus() {
+            this.catalogFocusActive = false;
+            this.catalogFocusError = '';
+            this.results = [];
+            this.searchPerformed = false;
+            this.selectedType = null;
+            if (window.location.pathname.startsWith('/catalog/')) {
+                window.history.replaceState({}, '', '/');
+            }
+        },
+
+        async showCatalogCard(type, id) {
+            this.catalogFocusError = '';
+            this.loading = true;
+            try {
+                const response = await fetch(`/api/catalog/${type}/${id}`);
+                const data = await response.json();
+                if (!data.success || !data.insect) {
+                    this.catalogFocusError = 'Карточка не найдена в каталоге.';
+                    return;
+                }
+                const insect = { ...data.insect, insect_type: type };
+                this.catalogFocusActive = true;
+                this.selectedType = type;
+                this.viewingAll = false;
+                this.results = [insect];
+                this.searchPerformed = true;
+                await this.loadFilterOptions(type);
+                await this.$nextTick();
+                await this.$nextTick();
+                const resultsSection = document.querySelector('.results-section');
+                if (resultsSection) {
+                    resultsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+                setTimeout(() => {
+                    const el = document.getElementById(this.catalogCardDomId(type, id));
+                    if (!el) return;
+                    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    el.classList.add('catalog-card-highlight');
+                    setTimeout(() => el.classList.remove('catalog-card-highlight'), 3500);
+                }, 350);
+            } catch (error) {
+                console.error('Ошибка загрузки карточки каталога:', error);
+                this.catalogFocusError = 'Не удалось загрузить карточку. Проверьте подключение к серверу.';
+            } finally {
+                this.loading = false;
+            }
+        },
     },
     mounted() {
         // Получаем данные пользователя из шаблона, если они переданы
@@ -620,6 +846,19 @@ createApp({
             } catch (e) {
                 this.currentUser = null;
             }
+        }
+        const deepLinkEl = document.getElementById('catalog-deep-link');
+        if (deepLinkEl) {
+            try {
+                const link = JSON.parse(deepLinkEl.textContent);
+                if (link && link.type && link.id) {
+                    this.showCatalogCard(link.type, link.id);
+                }
+            } catch (e) {
+                console.error('catalog deep link parse error', e);
+            }
+        } else {
+            this.openCatalogFromQuery();
         }
     }
 }).mount('#app');

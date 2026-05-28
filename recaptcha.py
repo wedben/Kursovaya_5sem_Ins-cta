@@ -13,7 +13,14 @@ except ImportError:
     SSL_CONTEXT = ssl.create_default_context()
 
 
+def recaptcha_disabled() -> bool:
+    return os.getenv('RECAPTCHA_DISABLED', '').strip().lower() in ('1', 'true', 'yes', 'on')
+
+
 def recaptcha_enabled() -> bool:
+    """Показывать виджет и проверять ответ (можно отключить для localhost)."""
+    if recaptcha_disabled():
+        return False
     return bool(os.getenv('RECAPTCHA_SITE_KEY') and os.getenv('RECAPTCHA_SECRET_KEY'))
 
 

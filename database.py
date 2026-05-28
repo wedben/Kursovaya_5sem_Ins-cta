@@ -4,6 +4,15 @@ from typing import List, Dict, Optional
 import re
 from config import DB_CONFIG
 
+CATALOG_TABLES = {
+    'dragonfly': 'dragonflies',
+    'beetle': 'beetles',
+    'butterfly': 'butterflies',
+    'mushroom': 'mushrooms',
+    'herb': 'herbs',
+}
+
+
 class Database:
     def __init__(self):
         self.config = DB_CONFIG
@@ -24,21 +33,15 @@ class Database:
         Поиск насекомых по параметрам
         
         Args:
-            insect_type: 'dragonfly', 'beetle' или 'butterfly'
+            insect_type: тип каталога (dragonfly, beetle, butterfly, mushroom, herb)
             params: словарь с параметрами поиска (size, color, habitat, season и т.д.)
         
         Returns:
             Список найденных насекомых
         """
-        # Правильные имена таблиц
-        table_names = {
-            'dragonfly': 'dragonflies',
-            'beetle': 'beetles',
-            'butterfly': 'butterflies'
-        }
-        table_name = table_names.get(insect_type)
+        table_name = CATALOG_TABLES.get(insect_type)
         if not table_name:
-            raise ValueError(f"Неверный тип насекомого: {insect_type}")
+            raise ValueError(f"Неверный тип: {insect_type}")
         
         conn = self.get_connection()
         # Используем RealDictCursor для получения результатов в виде словарей
@@ -130,6 +133,36 @@ class Database:
                         values.append(f"%{keyword}%")
                     if time_conditions:
                         conditions.append("(" + " OR ".join(time_conditions) + ")")
+
+        elif insect_type == 'mushroom':
+            if params.get('cap'):
+                conditions.append("(color ILIKE %s OR description ILIKE %s)")
+                cap = params['cap']
+                values.extend([f'%{cap}%', f'%шляпка: {cap}%'])
+            if params.get('stalk'):
+                conditions.append("description ILIKE %s")
+                values.append(f"%ножка: {params['stalk']}%")
+            if params.get('growth'):
+                conditions.append("description ILIKE %s")
+                values.append(f"%растёт%{params['growth']}%")
+            if params.get('size_category'):
+                conditions.append("(description ILIKE %s OR color ILIKE %s)")
+                sc = f"%{params['size_category']}%"
+                values.extend([sc, sc])
+
+        elif insect_type == 'herb':
+            if params.get('life_form'):
+                conditions.append("description ILIKE %s")
+                values.append(f"%жизненная форма%{params['life_form']}%")
+            if params.get('leaf'):
+                conditions.append("description ILIKE %s")
+                values.append(f"%лист%{params['leaf']}%")
+            if params.get('aroma'):
+                conditions.append("description ILIKE %s")
+                values.append(f"%аромат%{params['aroma']}%")
+            if params.get('flower_state'):
+                conditions.append("description ILIKE %s")
+                values.append(f"%состояние цветов%{params['flower_state']}%")
         
         if conditions:
             query += " AND " + " AND ".join(conditions)
@@ -145,15 +178,9 @@ class Database:
     
     def get_all_insects(self, insect_type: str) -> List[Dict]:
         """Получить все насекомые определенного типа"""
-        # Правильные имена таблиц
-        table_names = {
-            'dragonfly': 'dragonflies',
-            'beetle': 'beetles',
-            'butterfly': 'butterflies'
-        }
-        table_name = table_names.get(insect_type)
+        table_name = CATALOG_TABLES.get(insect_type)
         if not table_name:
-            raise ValueError(f"Неверный тип насекомого: {insect_type}")
+            raise ValueError(f"Неверный тип: {insect_type}")
         
         conn = self.get_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
@@ -169,15 +196,9 @@ class Database:
     
     def add_insect(self, insect_type: str, data: Dict):
         """Добавить насекомое в базу данных"""
-        # Правильные имена таблиц
-        table_names = {
-            'dragonfly': 'dragonflies',
-            'beetle': 'beetles',
-            'butterfly': 'butterflies'
-        }
-        table_name = table_names.get(insect_type)
+        table_name = CATALOG_TABLES.get(insect_type)
         if not table_name:
-            raise ValueError(f"Неверный тип насекомого: {insect_type}")
+            raise ValueError(f"Неверный тип: {insect_type}")
         
         conn = self.get_connection()
         cursor = conn.cursor()
@@ -196,14 +217,9 @@ class Database:
     
     def get_filter_options(self, insect_type: str) -> Dict:
         """Получить уникальные значения для фильтров из базы данных"""
-        table_names = {
-            'dragonfly': 'dragonflies',
-            'beetle': 'beetles',
-            'butterfly': 'butterflies'
-        }
-        table_name = table_names.get(insect_type)
+        table_name = CATALOG_TABLES.get(insect_type)
         if not table_name:
-            raise ValueError(f"Неверный тип насекомого: {insect_type}")
+            raise ValueError(f"Неверный тип: {insect_type}")
         
         conn = self.get_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
@@ -600,6 +616,94 @@ class Database:
             all_seasons = [row['season'] for row in cursor.fetchall()]
             options['seasons'] = all_seasons
             options['all_seasons'] = all_seasons
+
+        elif insect_type == 'mushroom':
+            options['basic_size_categories'] = ['Крупный', 'Средний', 'Мелкий', 'Мелкий–средний']
+            options['basic_habitats'] = ['лес', 'сосняк', 'берёзовый', 'осина', 'пень', 'земля']
+            options['basic_seasons'] = ['июнь', 'июль', 'август', 'сентябрь', 'октябрь']
+            for field, key in (('habitat', 'all_habitats'), ('season', 'all_seasons')):
+                cursor.execute(f"""
+                    SELECT DISTINCT {field} FROM {table_name}
+                    WHERE {field} IS NOT NULL AND {field} != ''
+                    ORDER BY {field}
+                """)
+                options[key] = [row[field] for row in cursor.fetchall()]
+            cursor.execute(f"""
+                SELECT description FROM {table_name}
+                WHERE description ILIKE '%размер:%'
+            """)
+            sizes = set()
+            for row in cursor.fetchall():
+                for m in re.findall(r'Размер:\s*([^;]+)', row['description'] or '', re.I):
+                    sizes.add(m.strip())
+            options['size_categories'] = sorted(sizes)
+            caps = set()
+            cursor.execute(f"""
+                SELECT color FROM {table_name}
+                WHERE color IS NOT NULL AND color != ''
+            """)
+            for row in cursor.fetchall():
+                caps.add(row['color'].strip())
+            cursor.execute(f"""
+                SELECT description FROM {table_name}
+                WHERE description ILIKE '%шляпка:%'
+            """)
+            for row in cursor.fetchall():
+                for m in re.findall(r'Шляпка:\s*([^;]+)', row['description'] or '', re.I):
+                    caps.add(m.strip())
+            options['all_caps'] = sorted(caps)
+            stalks = set()
+            cursor.execute(f"""
+                SELECT description FROM {table_name}
+                WHERE description ILIKE '%ножка:%'
+            """)
+            for row in cursor.fetchall():
+                for m in re.findall(r'Ножка:\s*([^;]+)', row['description'] or '', re.I):
+                    stalks.add(m.strip())
+            options['all_stalks'] = sorted(stalks)
+
+        elif insect_type == 'herb':
+            options['basic_life_forms'] = ['Трава', 'Куст']
+            options['basic_colors'] = ['жёлтый', 'белый', 'лиловый', 'розовый', 'зелёный']
+            options['basic_habitats'] = ['луг', 'лес', 'берег', 'опушка', 'поле', 'дорога']
+            options['basic_discovery_periods'] = ['весна', 'лето', 'осень', 'весна–лето']
+            options['basic_flower_states'] = []
+            cursor.execute(f"""
+                SELECT DISTINCT color FROM {table_name}
+                WHERE color IS NOT NULL AND color != ''
+                ORDER BY color
+            """)
+            options['colors'] = [row['color'] for row in cursor.fetchall()]
+            cursor.execute(f"""
+                SELECT DISTINCT habitat FROM {table_name}
+                WHERE habitat IS NOT NULL AND habitat != ''
+                ORDER BY habitat
+            """)
+            options['all_habitats'] = [row['habitat'] for row in cursor.fetchall()]
+            cursor.execute(f"""
+                SELECT DISTINCT season FROM {table_name}
+                WHERE season IS NOT NULL AND season != ''
+                ORDER BY season
+            """)
+            options['discovery_periods'] = [row['season'] for row in cursor.fetchall()]
+            cursor.execute(f"""
+                SELECT description FROM {table_name}
+                WHERE description ILIKE '%состояние цветов%'
+            """)
+            flower_states = set()
+            for row in cursor.fetchall():
+                for m in re.findall(r'Состояние цветов:\s*([^;]+)', row['description'] or '', re.I):
+                    flower_states.add(m.strip())
+            options['flower_states'] = sorted(flower_states)
+            cursor.execute(f"""
+                SELECT description FROM {table_name}
+                WHERE description ILIKE '%жизненная форма%'
+            """)
+            forms = set()
+            for row in cursor.fetchall():
+                for m in re.findall(r'Жизненная форма:\s*([^;]+)', row['description'] or '', re.I):
+                    forms.add(m.strip())
+            options['life_forms'] = sorted(forms)
         
         cursor.close()
         conn.close()

@@ -755,6 +755,53 @@ main {
     height: 100%;
 }
 
+.catalog-focus-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 20px;
+    padding: 14px 18px;
+    background: linear-gradient(135deg, #e9f0ff 0%, #f3e9ff 100%);
+    border: 2px solid #667eea;
+    border-radius: 12px;
+}
+
+.catalog-focus-title {
+    color: #333;
+    font-size: 1.05em;
+}
+
+.catalog-focus-back {
+    padding: 8px 16px;
+    border: none;
+    border-radius: 8px;
+    background: #667eea;
+    color: #fff;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.catalog-focus-back:hover {
+    background: #5568d3;
+}
+
+.catalog-focus-error {
+    margin-bottom: 16px;
+    padding: 12px 16px;
+    background: #fff3cd;
+    border: 1px solid #ffc107;
+    border-radius: 8px;
+    color: #856404;
+}
+
+.insect-card.catalog-card-highlight {
+    outline: 3px solid #667eea;
+    outline-offset: 4px;
+    box-shadow: 0 0 0 6px rgba(102, 126, 234, 0.25);
+}
+
 .insect-card:hover {
     transform: translateY(-8px);
     box-shadow: 0 12px 30px rgba(102, 126, 234, 0.2);
